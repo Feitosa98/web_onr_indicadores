@@ -61,7 +61,14 @@ class StreamToLogger(object):
 sys.stderr = StreamToLogger(logging.getLogger('STDERR'), logging.ERROR)
 
 # Import the Flask app
+# Import the Flask app
 from imoveis_web import app
+
+# Explicit import to help PyInstaller find it (fixes ModuleNotFoundError)
+try:
+    from flask_wtf.csrf import CSRFProtect
+except ImportError:
+    pass
 
 def get_ip():
     try:

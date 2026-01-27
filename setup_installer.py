@@ -117,12 +117,17 @@ class InstallerGUI:
         path = os.path.join(desktop, f"{APP_NAME}.lnk")
         target = os.path.join(INSTALL_DIR, EXE_NAME)
         
-        shell = win32com.client.Dispatch("WScript.Shell")
-        shortcut = shell.CreateShortCut(path)
-        shortcut.Targetpath = target
-        shortcut.WorkingDirectory = INSTALL_DIR
-        shortcut.IconLocation = target
-        shortcut.save()
+        try:
+            shell = win32com.client.Dispatch("WScript.Shell")
+            shortcut = shell.CreateShortCut(path)
+            shortcut.Targetpath = target
+            shortcut.WorkingDirectory = INSTALL_DIR
+            shortcut.IconLocation = target
+            shortcut.save()
+        except Exception as e:
+            # Permissions error or OneDrive path issue. Don't crash installer.
+            print(f"Failed to create shortcut: {e}")
+            messagebox.showwarning("Aviso", f"Não foi possível criar o atalho na Área de Trabalho.\nErro: {e}\n\nO sistema foi instalado em {INSTALL_DIR}")
 
 if __name__ == "__main__":
     if not win32com.client:
