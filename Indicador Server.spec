@@ -19,6 +19,11 @@ if os.path.exists(site_packages):
     if os.path.exists(wtforms_path):
         datas.append((wtforms_path, 'wtforms'))
 
+    # Add waitress
+    waitress_path = os.path.join(site_packages, 'waitress')
+    if os.path.exists(waitress_path):
+        datas.append((waitress_path, 'waitress'))
+
 a = Analysis(
     ['server_gui.py'],
     pathex=[site_packages], # Add site-packages to pathex explicitly
