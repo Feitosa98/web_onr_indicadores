@@ -28,19 +28,27 @@ def main():
     
     # 3. Create Payload Zip
     print("--- Creating payload.zip ---")
-    if not os.path.exists(SERVER_DIST):
-        print(f"Error: {SERVER_DIST} not found!")
-        return
+    
+    server_exe = os.path.join(DIST_DIR, "Indicador Server.exe")
+    if not os.path.exists(server_exe):
+        # Fallback to dir check just in case spec changes
+        if os.path.exists(SERVER_DIST):
+             server_exe = None # It is a dir
+        else:
+             print(f"Error: {server_exe} not found!")
+             return
 
     with zipfile.ZipFile(PAYLOAD_ZIP, 'w', zipfile.ZIP_DEFLATED) as zipf:
-        for root, dirs, files in os.walk(SERVER_DIST):
-            for file in files:
-                abs_path = os.path.join(root, file)
-                # Rel path inside zip should be relative to SERVER_DIST
-                # e.g. "imoveis_web.exe" not "Indicador Server/imoveis_web.exe"
-                # Wait, if we extract to InstallDir, we want files directly there.
-                rel_path = os.path.relpath(abs_path, SERVER_DIST)
-                zipf.write(abs_path, rel_path)
+        if server_exe:
+            # It's a file. Rename to match what setup_installer expects
+            zipf.write(server_exe, "IndicadorRealServer.exe")
+        else:
+            # It's a directory
+            for root, dirs, files in os.walk(SERVER_DIST):
+                for file in files:
+                    abs_path = os.path.join(root, file)
+                    rel_path = os.path.relpath(abs_path, SERVER_DIST)
+                    zipf.write(abs_path, rel_path)
     
     print(f"Payload created: {PAYLOAD_ZIP}")
 
