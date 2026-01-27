@@ -32,6 +32,7 @@ from flask import (
     jsonify
 )
 from flask_login import LoginManager, UserMixin, login_user, login_required, logout_user, current_user
+from flask_wtf.csrf import CSRFProtect
 from werkzeug.security import generate_password_hash, check_password_hash
 
 # ... (existing config)
@@ -49,7 +50,7 @@ def get_base_path():
 
 BASE_DIR = get_base_path()
 DB_PATH = os.path.join(BASE_DIR, "imoveis.db")
-SECRET_KEY = "onr-indicador-real-web-123"
+SECRET_KEY = os.getenv("FLASK_SECRET_KEY", "dev-fallback-secret-key-do-not-use-in-prod")
 UPLOAD_FOLDER = os.path.join(BASE_DIR, "uploads")
 ALLOWED_EXTENSIONS = {'tif', 'tiff', 'png', 'jpg', 'jpeg', 'pdf'}
 
@@ -100,6 +101,7 @@ if not os.path.exists(UPLOAD_FOLDER):
     os.makedirs(UPLOAD_FOLDER)
 
 app.config['PERMANENT_SESSION_LIFETIME'] = timedelta(seconds=3600)
+csrf = CSRFProtect(app)
 
 # ==============================
 # LOGGING CONFIGURATION
