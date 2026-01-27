@@ -16,6 +16,15 @@ def main():
     PAYLOAD_ZIP = os.path.join(BASE_DIR, "payload.zip")
     INSTALLER_NAME = "Instalador_Indicador_Real"
 
+    # 0. Kill running processes to unlock files
+    print("--- Killing running instances ---")
+    try:
+        run_command(['taskkill', '/F', '/IM', "Indicador Server.exe"], cwd=BASE_DIR)
+    except: pass
+    try:
+        run_command(['taskkill', '/F', '/IM', f"{INSTALLER_NAME}.exe"], cwd=BASE_DIR)
+    except: pass
+
     # 1. Clean previous builds
     print("--- Cleaning up ---")
     if os.path.exists(DIST_DIR): shutil.rmtree(DIST_DIR)

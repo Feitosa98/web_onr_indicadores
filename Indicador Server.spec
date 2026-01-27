@@ -1,12 +1,29 @@
 # -*- mode: python ; coding: utf-8 -*-
 
 
+from PyInstaller.utils.hooks import collect_all
+
+datas = [('templates', 'templates'), ('static', 'static'), ('imoveis_web.py', '.')]
+binaries = []
+hiddenimports = ['imoveis_web', 'iago', 'waitress', 'pystray', 'PIL', 'PIL._tkinter_finder', 'dotenv', 'psycopg2', 'engineio.async_drivers.threading']
+
+# Force collection of flask_wtf and wtforms
+tmp_ret = collect_all('flask_wtf')
+datas += tmp_ret[0]
+binaries += tmp_ret[1]
+hiddenimports += tmp_ret[2]
+
+tmp_ret = collect_all('wtforms')
+datas += tmp_ret[0]
+binaries += tmp_ret[1]
+hiddenimports += tmp_ret[2]
+
 a = Analysis(
     ['server_gui.py'],
     pathex=[],
-    binaries=[],
-    datas=[('templates', 'templates'), ('static', 'static'), ('imoveis_web.py', '.')],
-    hiddenimports=['imoveis_web', 'iago', 'waitress', 'pystray', 'PIL', 'PIL._tkinter_finder', 'dotenv', 'psycopg2', 'engineio.async_drivers.threading', 'flask_wtf', 'flask_wtf.csrf'],
+    binaries=binaries,
+    datas=datas,
+    hiddenimports=hiddenimports,
     hookspath=[],
     hooksconfig={},
     runtime_hooks=[],
