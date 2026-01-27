@@ -10,6 +10,9 @@
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
     <link href="{{ url_for('static', filename='style.css') }}" rel="stylesheet">
     <link href="https://cdn.jsdelivr.net/npm/tom-select@2.2.2/dist/css/tom-select.bootstrap5.min.css" rel="stylesheet">
+    {% if csrf_token %}
+    <meta name="csrf-token" content="{{ csrf_token() }}">
+    {% endif %}
 </head>
 
 <body>
@@ -72,6 +75,13 @@
                         Exportar JSON
                     </a>
                 </li>
+                <li>
+                    <a href="{{ url_for('indicador_pessoal') }}"
+                        class="nav-link text-white {{ 'active' if request.endpoint == 'indicador_pessoal' }}">
+                        <i class="bi bi-person-vcard"></i>
+                        Indicador Pessoal
+                    </a>
+                </li>
 
                 {% if current_user.role != 'colaborador' %}
                 <li class="nav-item mt-3 pt-3 border-top border-light">
@@ -81,6 +91,15 @@
                         Usuários
                     </a>
                 </li>
+                {% if current_user.role == 'admin' %}
+                <li>
+                    <a href="{{ url_for('admin_logs') }}"
+                        class="nav-link text-white {{ 'active' if request.endpoint == 'admin_logs' }}">
+                        <i class="bi bi-journal-text"></i>
+                        Logs do Sistema
+                    </a>
+                </li>
+                {% endif %}
                 {% endif %}
             </ul>
             {% else %}

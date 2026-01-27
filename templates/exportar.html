@@ -1,0 +1,58 @@
+{% extends "base.html" %}
+
+{% block conteudo %}
+<div class="row justify-content-center">
+    <!-- Card Exportação Completa -->
+    <div class="col-md-5 mb-4">
+        <div class="card h-100 shadow-sm border-0">
+            <div class="card-body text-center p-5">
+                <div class="mb-4 text-primary">
+                    <i class="bi bi-database-fill-down" style="font-size: 4rem;"></i>
+                </div>
+                <h3 class="card-title fw-bold">Exportação Completa</h3>
+                <p class="card-text text-muted my-3">
+                    Gera um arquivo JSON contendo todas as matrículas com status <strong>CONCLUIDO</strong>.
+                </p>
+                <div class="d-grid gap-2 mt-4">
+                    <a href="{{ url_for('baixar_json', mode='completo') }}" class="btn btn-primary btn-lg">
+                        <i class="bi bi-download me-2"></i> Baixar Completo
+                    </a>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Card Exportação Incremental -->
+    <div class="col-md-5 mb-4">
+        <div class="card h-100 shadow-sm border-0">
+            <div class="card-body text-center p-5">
+                <div class="mb-4 text-success">
+                    <i class="bi bi-clock-history" style="font-size: 4rem;"></i>
+                </div>
+                <h3 class="card-title fw-bold">Exportação Incremental</h3>
+                <p class="card-text text-muted my-3">
+                    Gera um arquivo somente com as matrículas alteradas ou concluídas desde a última exportação.
+                </p>
+
+                {% if last_export %}
+                <div class="alert alert-light border small text-muted">
+                    <i class="bi bi-info-circle me-1"></i>
+                    Última exportação: <strong>{{ last_export }}</strong>
+                </div>
+                {% else %}
+                <div class="alert alert-light border small text-muted">
+                    <i class="bi bi-info-circle me-1"></i>
+                    Nenhuma exportação registrada.
+                </div>
+                {% endif %}
+
+                <div class="d-grid gap-2 mt-4">
+                    <a href="{{ url_for('baixar_json', mode='incremental') }}" class="btn btn-outline-success btn-lg">
+                        <i class="bi bi-filter-circle me-2"></i> Baixar Incremental
+                    </a>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

@@ -40,3 +40,5 @@ build/
 *.spec
 *.exe
 installer_assets/
+.venv/
+_scripts_antigos/

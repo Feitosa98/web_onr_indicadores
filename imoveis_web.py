@@ -16,6 +16,9 @@ import iago
 from apscheduler.schedulers.background import BackgroundScheduler
 import updater
 import atexit
+import logging
+from logging.handlers import RotatingFileHandler
+
 
 from flask import (
     Flask,
@@ -98,28 +101,46 @@ if not os.path.exists(UPLOAD_FOLDER):
 
 app.config['PERMANENT_SESSION_LIFETIME'] = timedelta(seconds=3600)
 
+# ==============================
+# LOGGING CONFIGURATION
+# ==============================
+
+# Configure centralized logging
+LOG_FILE = os.path.join(BASE_DIR, "system.log")
+log_handler = RotatingFileHandler(LOG_FILE, maxBytes=5*1024*1024, backupCount=3)
+log_handler.setLevel(logging.DEBUG)
+log_formatter = logging.Formatter(
+    '%(asctime)s - %(levelname)s - [%(module)s] - %(message)s',
+    datefmt='%Y-%m-%d %H:%M:%S'
+)
+log_handler.setFormatter(log_formatter)
+
+# Configure root logger explicitly to ensure handler is added
+# (basicConfig does nothing if root logger already has handlers)
+root_logger = logging.getLogger()
+root_logger.setLevel(logging.INFO)
+if not any(isinstance(h, RotatingFileHandler) for h in root_logger.handlers):
+    root_logger.addHandler(log_handler)
+
+logger = logging.getLogger(__name__)
+logger.info("=" * 60)
+logger.info("Sistema Indicador Real - Iniciando...")
+logger.info("=" * 60)
+
+
 def init_db():
     """Initializes the database if it doesn't exist or is empty."""
     # Use global DB_PATH which is now absolute
     
-    # Check if we need to init (simple check: if users table exists)
-    needs_init = False
-    if not os.path.exists(db_path) or os.path.getsize(db_path) == 0:
-        needs_init = True
-    else:
-        try:
-            conn = sqlite3.connect(db_path)
-            cur = conn.cursor()
-            cur.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='users'")
-            if not cur.fetchone():
-                needs_init = True
-            conn.close()
-        except:
-            needs_init = True
+    # Always check/create tables
+    needs_init = True
+    
+    # But only print if we actually do something?
+    # For now, let's just let it run SQL (IF NOT EXISTS is safe)
 
     if needs_init:
-        print(f"[INIT] Initializing database at {db_path}...")
-        conn = sqlite3.connect(db_path)
+        print(f"[INIT] Initializing database at {DB_PATH}...")
+        conn = sqlite3.connect(DB_PATH)
         cur = conn.cursor()
 
         # 1. Users
@@ -216,6 +237,22 @@ def init_db():
             CREATE TABLE IF NOT EXISTS system_config (
                 key TEXT PRIMARY KEY,
                 value TEXT
+            )
+        """)
+
+        # 6. Indicador Pessoal (NEW)
+        cur.execute("""
+            CREATE TABLE IF NOT EXISTS indicador_pessoal (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                nome TEXT,
+                cpf_cnpj TEXT,
+                n_matricula TEXT,
+                tipo_ato TEXT,
+                dt_reg_averb TEXT,
+                dt_venda TEXT,
+                observacao TEXT,
+                created_at TEXT,
+                updated_at TEXT
             )
         """)
 
@@ -336,19 +373,19 @@ def scheduled_update_check():
     """Daily check for updates."""
     global UPDATE_STATE
     try:
-        logging.info("Checking for updates (Scheduled)...")
+        logging.info("Verificando atualizações (Agendado)...")
         res = updater.check_for_updates()
         if res and not res.get('error'):
             UPDATE_STATE['available'] = res['update_available']
             UPDATE_STATE['commits_behind'] = res['commits_behind']
             UPDATE_STATE['last_check'] = datetime.now().isoformat()
             if res['update_available']:
-                logging.info(f"Update available! Behind by {res['commits_behind']} commits.")
+                logging.info(f"Atualização disponível! Atrasado em {res['commits_behind']} commits.")
                 # Notify admins
                 with app.app_context():
                      notify_admins_of_update(res['commits_behind'])
     except Exception as e:
-        logging.error(f"Error in scheduled check: {e}")
+        logging.error(f"Erro na verificação agendada: {e}")
 
 # Start Scheduler
 cron_scheduler.add_job(func=scheduled_update_check, trigger="cron", hour=0, minute=0)
@@ -358,7 +395,321 @@ cron_scheduler.start()
 atexit.register(lambda: cron_scheduler.shutdown())
 
 
-# ... (skipping constants) ...
+# ==============================
+# INDICADOR PESSOAL LOGIC
+# ==============================
+
+@app.route('/indicador_pessoal')
+@login_required
+def indicador_pessoal():
+    return render_template('indicador_pessoal.html')
+
+@app.route('/indicador_pessoal/api/list', methods=['GET'])
+@login_required
+def api_list_indicador():
+    conn = get_conn()
+    cur = conn.cursor()
+    
+    # Filter params
+    search = request.args.get('search', '').lower()
+    
+    query = "SELECT * FROM indicador_pessoal"
+    params = []
+    
+    if search:
+        query += " WHERE lower(nome) LIKE ? OR cpf_cnpj LIKE ? OR n_matricula LIKE ?"
+        params.extend([f"%{search}%", f"%{search}%", f"%{search}%"])
+        
+    query += " ORDER BY dt_reg_averb DESC, created_at DESC"
+    
+    cur.execute(query, params)
+    rows = cur.fetchall()
+    conn.close()
+    
+    data = [dict(row) for row in rows]
+    return jsonify(data)
+
+@app.route('/indicador_pessoal/api/summary', methods=['GET'])
+@login_required
+def api_summary_indicador():
+    search = request.args.get('search', '').strip()
+    conn = get_conn()
+    cur = conn.cursor()
+    
+    query = """
+        SELECT 
+            n_matricula, 
+            MAX(nome) as nome_exemplo, 
+            COUNT(*) as qtd_atos, 
+            MAX(dt_reg_averb) as ultima_data
+        FROM indicador_pessoal
+    """
+    
+    params = []
+    if search:
+        query += " WHERE nome LIKE ? OR cpf_cnpj LIKE ? OR n_matricula LIKE ?"
+        s_term = f"%{search}%"
+        params = [s_term, s_term, s_term]
+        
+    query += " GROUP BY n_matricula ORDER BY ultima_data DESC"
+    
+    cur.execute(query, params)
+    rows = cur.fetchall()
+    conn.close()
+    
+    data = []
+    for row in rows:
+        data.append({
+            "n_matricula": row[0],
+            "nome": row[1], # Just one name to show
+            "qtd_atos": row[2],
+            "ultima_data": row[3]
+        })
+        
+    return jsonify(data)
+
+@app.route('/indicador_pessoal/api/property/<matricula>', methods=['GET'])
+@login_required
+def api_get_property_by_matricula(matricula):
+    conn = get_conn()
+    cur = conn.cursor()
+    # Try to find the exact property in main table
+    # Assuming numero_registro matches matricula
+    cur.execute("SELECT * FROM imoveis WHERE numero_registro = ?", (matricula.strip(),))
+    row = cur.fetchone()
+    conn.close()
+    
+    if not row:
+        return jsonify({"found": False})
+        
+    return jsonify({"found": True, "data": dict(row)})
+
+@app.route('/indicador_pessoal/api/save', methods=['POST'])
+@login_required
+def api_save_indicador():
+    try:
+        data = request.json
+        conn = get_conn()
+        cur = conn.cursor()
+        now = datetime.now().isoformat()
+        
+        if data.get('id'):
+            # Update
+            cur.execute("""
+                UPDATE indicador_pessoal 
+                SET nome=?, cpf_cnpj=?, n_matricula=?, tipo_ato=?, 
+                    dt_reg_averb=?, dt_venda=?, observacao=?, updated_at=?
+                WHERE id=?
+            """, (
+                data['nome'], data['cpf_cnpj'], data['n_matricula'], data['tipo_ato'],
+                data['dt_reg_averb'], data['dt_venda'], data.get('observacao', ''), now, data['id']
+            ))
+        else:
+            # Create
+            cur.execute("""
+                INSERT INTO indicador_pessoal 
+                (nome, cpf_cnpj, n_matricula, tipo_ato, dt_reg_averb, dt_venda, observacao, created_at, updated_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """, (
+                data['nome'], data['cpf_cnpj'], data['n_matricula'], data['tipo_ato'],
+                data['dt_reg_averb'], data['dt_venda'], data.get('observacao', ''), now, now
+            ))
+            
+        conn.commit()
+        conn.close()
+        return jsonify({"status": "success"})
+    except Exception as e:
+        return jsonify({"status": "error", "message": str(e)}), 500
+
+@app.route('/indicador_pessoal/api/delete/<int:id>', methods=['POST'])
+@login_required
+def api_delete_indicador(id):
+    try:
+        conn = get_conn()
+        cur = conn.cursor()
+        cur.execute("DELETE FROM indicador_pessoal WHERE id=?", (id,))
+        conn.commit()
+        conn.close()
+        return jsonify({"status": "success"})
+    except Exception as e:
+        return jsonify({"status": "error", "message": str(e)}), 500
+
+@app.route('/indicador_pessoal/import', methods=['POST'])
+@login_required
+def import_indicador_excel():
+    if 'file' not in request.files:
+        return jsonify({"status": "error", "message": "Nenhum arquivo enviado"}), 400
+        
+    file = request.files['file']
+    if file.filename == '':
+        return jsonify({"status": "error", "message": "Nenhum arquivo selecionado"}), 400
+
+    try:
+        # Read Excel
+        df = pd.read_excel(file)
+        
+        # Expected columns mapping (or heuristic)
+        # NOME, CNPJCPF, NMATRICULA, TIPODEATO, DTREGAVERB, DTVENDA
+        
+        conn = get_conn()
+        cur = conn.cursor()
+        now = datetime.now().isoformat()
+        
+        count = 0
+        for _, row in df.iterrows():
+            # Basic mapping, adjust as needed based on user excel format
+            nome = str(row.get('NOME', row.get('nome', ''))).strip()
+            cpf = str(row.get('CNPJCPF', row.get('cpf_cnpj', ''))).strip()
+            mat = str(row.get('NMATRICULA', row.get('n_matricula', ''))).strip()
+            tipo = str(row.get('TIPODEATO', row.get('tipo_ato', 'Registrado'))).strip()
+            dtr = str(row.get('DTREGAVERB', row.get('dt_reg_averb', ''))).strip()
+            dtv = str(row.get('DTVENDA', row.get('dt_venda', ''))).strip()
+            
+            if nome: # Only insert if name exists
+                cur.execute("""
+                    INSERT INTO indicador_pessoal 
+                    (nome, cpf_cnpj, n_matricula, tipo_ato, dt_reg_averb, dt_venda, created_at, updated_at)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                """, (nome, cpf, mat, tipo, dtr, dtv, now, now))
+                count += 1
+                
+        conn.commit()
+        conn.close()
+        
+        return jsonify({"status": "success", "message": f"{count} registros importados com sucesso!"})
+        
+    except Exception as e:
+        return jsonify({"status": "error", "message": f"Erro na importação: {str(e)}"}), 500
+
+@app.route('/indicador_pessoal/extract', methods=['POST'])
+@login_required
+def extract_indicador_from_db():
+    try:
+        conn = get_conn()
+        cur = conn.cursor()
+        
+        # Select existing imoveis with valid Data
+        cur.execute("SELECT numero_registro, contribuinte, created_at, ocr_text FROM imoveis WHERE contribuinte IS NOT NULL AND contribuinte != ''")
+        rows = cur.fetchall()
+        
+        count = 0
+        now = datetime.now().isoformat()
+        
+        for row in rows:
+            # 1. Try to extract specific ACTS from OCR (Smarter IAGO)
+            acts = []
+            if row['ocr_text'] and len(row['ocr_text']) > 50:
+                 acts = iago.extract_acts(row['ocr_text'])
+            
+            if acts:
+                # Insert each found act
+                for act in acts:
+                    # Skip duplicate check for now or make it smart?
+                    # Let's check duplicate by Matricula + Act Type + Date
+                    cur.execute("SELECT id FROM indicador_pessoal WHERE n_matricula=? AND tipo_ato=? AND dt_reg_averb=?", 
+                                (row['numero_registro'], act['tipo_ato'], act['dt_ato']))
+                    if cur.fetchone():
+                        continue
+                        
+                    # Join parties found
+                    partes_str = ", ".join(act['partes']) if act['partes'] else "Não identificado"
+                    
+                    cur.execute("""
+                        INSERT INTO indicador_pessoal 
+                        (nome, cpf_cnpj, n_matricula, tipo_ato, dt_reg_averb, dt_venda, observacao, created_at, updated_at)
+                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    """, (
+                        partes_str, 
+                        "", # CPF is in partes_str usually
+                        row['numero_registro'],
+                        act['tipo_ato'],
+                        act['dt_ato'],
+                        "", # dt_venda could be same as dt_ato for compra e venda
+                        f"Extraído via IAGO (OCR): {act['header']}",
+                        now, now
+                    ))
+                    count += 1
+            else:
+                # 2. Fallback to Simple Contribuinte Extraction
+                try:
+                    contrib_list = json.loads(row['contribuinte'])
+                except:
+                    contrib_list = [row['contribuinte']]
+                    
+                if not contrib_list: continue
+
+                dt_reg = row['created_at'].split('T')[0] if row['created_at'] else now.split('T')[0]
+                
+                for nome in contrib_list:
+                    if not nome: continue
+                    
+                    cur.execute("SELECT id FROM indicador_pessoal WHERE n_matricula=? AND nome=?", (row['numero_registro'], nome))
+                    if cur.fetchone(): continue
+                        
+                    cur.execute("""
+                        INSERT INTO indicador_pessoal 
+                        (nome, cpf_cnpj, n_matricula, tipo_ato, dt_reg_averb, dt_venda, observacao, created_at, updated_at)
+                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    """, (
+                        nome, "", row['numero_registro'], "Proprietário Atual", dt_reg, "", 
+                        "Extraído automaticamente (Fallback).", now, now
+                    ))
+                    count += 1
+                
+        conn.commit()
+        conn.close()
+        return jsonify({"status": "success", "message": f"{count} registros extraídos do acervo."})
+        
+    except Exception as e:
+        return jsonify({"status": "error", "message": str(e)}), 500
+
+@app.route('/indicador_pessoal/learn', methods=['POST'])
+@login_required
+def train_iago():
+    """
+    Level 3: Active Learning.
+    User sends corrected data for a specific Matricula, and we tell IAGO to learn.
+    """
+    try:
+        data = request.json
+        n_matricula = data.get('n_matricula')
+        
+        if not n_matricula:
+             return jsonify({"status": "error", "message": "Matricula não informada"}), 400
+             
+        # Fetch original OCR text from imoveis table
+        conn = get_conn()
+        cur = conn.cursor()
+        cur.execute("SELECT ocr_text FROM imoveis WHERE numero_registro = ?", (n_matricula,))
+        row = cur.fetchone()
+        conn.close()
+        
+        if not row or not row['ocr_text']:
+             return jsonify({"status": "error", "message": "Texto OCR original não encontrado para esta matrícula."}), 404
+             
+        # Map frontend fields to IAGO learning fields
+        # user data: {nome, cpf_cnpj, tipo_ato, dt_reg_averb}
+        # iago fields: NOME_PARTE, CPF_PARTE, TIPO_ATO, DT_ATO
+        
+        learning_data = {
+            "NOME_PARTE": data.get('nome'),
+            "CPF_PARTE": data.get('cpf_cnpj'),
+            "TIPO_ATO": data.get('tipo_ato'),
+            "DT_ATO": data.get('dt_reg_averb')
+        }
+        
+        # Remove empty
+        learning_data = {k:v for k,v in learning_data.items() if v}
+        
+        learned_count = iago.learn(row['ocr_text'], learning_data)
+        
+        return jsonify({
+            "status": "success", 
+            "message": f"IAGO aprendeu {learned_count} novos padrões com sucesso!"
+        })
+        
+    except Exception as e:
+        return jsonify({"status": "error", "message": str(e)}), 500
 
 # ==============================
 # ROUTE UPDATES START HERE
@@ -500,7 +851,7 @@ def ocr_file_to_text(filepath: str) -> str:
                 for page in pages:
                     text += pytesseract.image_to_string(page) + "\n"
             except Exception as e:
-                print(f"[OCR ERROR] pdf2image failed. Check Poppler path. Details: {e}")
+                print(f"[ERRO OCR] pdf2image falhou. Verifique o caminho Poppler. Detalhes: {e}")
                 return ""
         else:
             img = Image.open(filepath)
@@ -824,7 +1175,7 @@ def inject_notifications():
                     count = r[0]
                 conn.close()
             except Exception as e:
-                logging.error(f"Error checking password resets: {e}")
+                logging.error(f"Erro ao verificar redefinições de senha: {e}")
         
         # Online Users (Active in last 5 min)
         online_users = []
@@ -836,7 +1187,7 @@ def inject_notifications():
             online_users = [dict(row) for row in cur.fetchall()]
             conn.close()
         except Exception as e:
-            logging.error(f"Error checking online users: {e}")
+            logging.error(f"Erro ao verificar usuários online: {e}")
 
         # Update status (from global)
         update_avail = False
@@ -851,7 +1202,7 @@ def inject_notifications():
             update_available=update_avail
         )
     except Exception as e:
-        logging.error(f"Critical error in context_processor: {e}")
+        logging.error(f"Erro crítico no processador de contexto: {e}")
         # Return harmless empty dict to avoid 500
         return {}
 
@@ -884,21 +1235,19 @@ def add_security_headers(response):
 def csrf_protect():
     if request.method == "POST":
         token = session.get('csrf_token')
-        if not token or token != request.form.get('csrf_token'):
-            # Allow login to not fail if we haven't set token yet (will fix by setting on get)
-            # But better: if no token in session, generate one?
-            # Actually, standard pattern:
-            # 1. Generate token and put in session if not present.
-            # 2. If POST, check form token vs session token.
-            pass # See check below
+        
+        # Check Form Data
+        req_token = request.form.get('csrf_token')
+        
+        # Check Headers (for AJAX/Fetch)
+        if not req_token:
+            req_token = request.headers.get('X-CSRFToken')
             
-        if not token or token != request.form.get('csrf_token'):
-             # Allow file upload checks to pass if we handle separate?
-             # For now, simplistic approach:
-             # Exclude login/public? No, login needs it too to prevent login CSRF.
-             # Strict check:
-             if request.form.get("mode") == "ajax" or request.is_json:
-                 return jsonify({"status": "error", "message": "Sessão expirada ou Token inválido. Recarregue a página."}), 403
+        if not token or token != req_token:
+
+             # Special case for our API
+             if request.path.startswith('/indicador_pessoal/') or request.form.get("mode") == "ajax" or request.is_json:
+                 return jsonify({"status": "error", "message": f"Erro de Segurança (CSRF). Token Sessão: {token is not None}, Header: {req_token is not None}"}), 403
              return "CSRF Token missing or invalid", 403
 
 def generate_csrf_token():
@@ -932,10 +1281,12 @@ def login():
         user = User.get_by_username(username)
         if user and check_password_hash(user.password_hash, password):
             login_user(user)
+            logger.info(f"Login bem-sucedido: {username} (role: {user.role})")
             if user.is_temporary_password:
                 return redirect(url_for("alterar_senha"))
             return redirect(url_for("index"))
         
+        logger.warning(f"Tentativa de login falhou: {username}")
         flash("Usuário ou senha inválidos", "danger")
 
     return render_template("login.html")
@@ -943,6 +1294,7 @@ def login():
 @app.route("/logout")
 @login_required
 def logout():
+    logger.info(f"Logout: {current_user.username}")
     logout_user()
     return redirect(url_for("login"))
 
@@ -964,6 +1316,7 @@ def recuperar_senha():
         conn.commit()
         conn.close()
         
+        logger.info(f"Recuperação de senha: Solicitação criada para usuário '{username}' (nome: {name})")
         flash("Solicitação enviada. Entre em contato com um administrador.", "success")
         return redirect(url_for("login"))
         
@@ -1073,6 +1426,7 @@ def importar_arquivo():
 
                     nid = save_dict_to_db_web(data, tiff_path=filepath, ocr_text=txt)
                     
+                    logger.info(f"Importação: {current_user.username} importou arquivo '{filename}' (Matrícula: {matricula})")
                     res['success'] = True
                     res['matricula'] = matricula
                 except Exception as e:
@@ -1115,6 +1469,11 @@ def index():
         else:
              where_clauses.append("(nome_logradouro LIKE ? OR bairro LIKE ?)")
              params.extend([f"%{q}%", f"%{q}%"])
+        
+        # Audit Log for Search
+        query_log = q
+        if len(query_log) > 50: query_log = query_log[:47] + "..."
+        logger.info(f"Busca: {current_user.username} buscou por '{query_log}'")
     
     if filtro_status == 'pendentes':
         where_clauses.append("(status_trabalho IS NULL OR status_trabalho != 'CONCLUIDO')")
@@ -1220,6 +1579,8 @@ def config_email():
             cur.execute("INSERT OR REPLACE INTO system_config (key, value) VALUES (?, ?)", (key, val))
         conn.commit()
 
+        logger.info(f"Configuração: {current_user.username} atualizou configurações de email")
+        
         if action == "test":
             # Test sending email to self
             success = email_service.send_email_sync(
@@ -1268,6 +1629,8 @@ def atualizacoes():
                 UPDATE_STATE['commits_behind'] = res['commits_behind']
                 UPDATE_STATE['last_check'] = datetime.now().isoformat()
                 
+                logger.info(f"Atualização: {current_user.username} verificou atualizações (disponível: {res['update_available']})")
+                
                 if res['update_available']:
                     flash(f"Nova versão encontrada! {res['commits_behind']} commits atrás.", "info")
                     changelog = res.get('changelog', [])
@@ -1279,10 +1642,12 @@ def atualizacoes():
         elif action == "update":
             success, msg = updater.perform_update()
             if success:
+                logger.info(f"Atualização: {current_user.username} aplicou atualização do sistema com sucesso")
                 flash(f"Atualização realizada com sucesso! {msg}. Reinicie o servidor para aplicar.", "success")
                 # Reset state
                 UPDATE_STATE['available'] = False
             else:
+                logger.error(f"Atualização: {current_user.username} tentou aplicar atualização mas falhou: {msg}")
                 flash(f"Falha na atualização: {msg}", "error")
             return redirect(url_for('atualizacoes'))
 
@@ -1297,6 +1662,176 @@ def atualizacoes():
                          state=UPDATE_STATE, 
                          current_version=current_version,
                          changelog=changelog)
+
+
+@app.route("/admin/logs", methods=["GET", "POST"])
+@login_required
+def admin_logs():
+    """Admin page to view system logs with filtering."""
+    if current_user.role != 'admin':
+        flash("Acesso não autorizado.", "error")
+        return redirect(url_for('index'))
+    
+    # Handle POST actions (clear logs)
+    if request.method == "POST":
+        action = request.form.get("action")
+        if action == "clear":
+            try:
+                # Clear the log file
+                with open(LOG_FILE, 'w') as f:
+                    f.write("")
+                logger.info(f"Logs limpos por {current_user.username}")
+                flash("Logs limpos com sucesso!", "success")
+            except Exception as e:
+                flash(f"Erro ao limpar logs: {e}", "error")
+        return redirect(url_for('admin_logs'))
+    
+    # Get filter parameters
+    num_lines = request.args.get('lines', '100', type=str)
+    level_filter = request.args.get('level', 'ALL', type=str)
+    search_query = request.args.get('search', '', type=str)
+    
+    # Validate num_lines
+    try:
+        num_lines_int = int(num_lines)
+        if num_lines_int < 1:
+            num_lines_int = 100
+        elif num_lines_int > 2000: # Limit max for performance
+            num_lines_int = 2000
+    except ValueError:
+        num_lines_int = 100
+    
+    # Read log file
+    logs = []
+    try:
+        if os.path.exists(LOG_FILE):
+            with open(LOG_FILE, 'r', encoding='utf-8', errors='replace') as f:
+                # Read all lines first to handle multiline entries correctly (reverse later)
+                all_lines = f.readlines()
+                
+            parsed_logs = []
+            current_entry = None
+            
+            # Regex for standard log format: YYYY-MM-DD HH:MM:SS - LEVEL - [module] - message
+            # Matches: 2024-05-20 15:30:00 - INFO - [imoveis_web] - Some message
+            log_pattern = re.compile(r'^(\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}) - (\w+) - \[(.*?)\] - (.*)$')
+            
+            for line in all_lines:
+                line = line.rstrip()
+                if not line:
+                    continue
+                    
+                match = log_pattern.match(line)
+                if match:
+                    # New log entry found
+                    if current_entry:
+                        parsed_logs.append(current_entry)
+                    
+                    timestamp_str, level, module, message = match.groups()
+                    current_entry = {
+                        'timestamp': timestamp_str,
+                        'level': level,
+                        'module': module,
+                        'message': message,
+                        'raw': line
+                    }
+                else:
+                    # Continuation of previous entry (e.g. stack trace)
+                    if current_entry:
+                        current_entry['message'] += "\n" + line
+                        current_entry['raw'] += "\n" + line
+                    else:
+                        # Orphan line (shouldn't happen often if file starts clean)
+                        current_entry = {
+                            'timestamp': '',
+                            'level': 'UNKNOWN',
+                            'module': '?',
+                            'message': line,
+                            'raw': line
+                        }
+
+            # Add the last entry
+            if current_entry:
+                parsed_logs.append(current_entry)
+            
+            # Apply filters and limit
+            
+            # We filter FIRST, then slice, or Slice then filter?
+            # It's better to filter first to ensure we get 'num_lines_int' MATCHING logs
+            # But specific requirement was likely "last N lines of file" vs "last N matching logs"
+            # However, usually users want to see the last N relevant events.
+            
+            # Let's filter first
+            filtered_logs = []
+            
+            # Reverse to process newest first
+            parsed_logs.reverse()
+            
+            # Log Translation Dictionary (Regex -> Replacement)
+            # Order matters: Specific matches first
+            TRANSLATION_MAP = [
+                (r"Checking for updates.*", "Verificando atualizações de sistema..."),
+                (r"Update available! Behind by (\d+) commits.*", r"Nova atualização disponível! Atrasado em \1 versões."),
+                (r"Error in scheduled check: (.*)", r"Erro na verificação agendada: \1"),
+                (r"Sistema Indicador Real - Iniciando.*", "Sistema Iniciado."),
+                (r"OCR ERROR.*Details: (.*)", r"Erro de OCR. Detalhes: \1"),
+                (r"Error checking password resets: (.*)", r"Erro ao verificar redefinições de senha: \1"),
+                (r"Error checking online users: (.*)", r"Erro ao verificar usuários online: \1"),
+                (r"Critical error in context_processor: (.*)", r"Erro crítico no processador de contexto: \1"),
+                (r"Logs limpos por (.*)", r"Logs apagados pelo usuário: \1"),
+                (r"Error converting TIFF to PDF: (.*)", r"Erro ao converter imagem TIFF para PDF: \1"),
+                (r"pdf2image failed.*", "Falha na biblioteca pdf2image. Verifique se o Poppler está instalado corretamente."),
+                (r"Restarting.*", "Reiniciando sistema..."),
+                (r".*HTTP.* 200 .*", "Requisição HTTP com sucesso (200)"),
+                (r".*HTTP.* 404 .*", "Página não encontrada (404)"),
+                (r".*HTTP.* 500 .*", "Erro interno do servidor (500)"),
+                (r"Visualização: (.*) visualizou imóvel ID (\d+).*", r"Acesso: \1 abriu a matrícula ID \2"),
+                (r"Edição: (.*) editou imóvel ID (\d+).*", r"Edição: \1 alterou dados da matrícula ID \2"),
+                (r"Conclusão: (.*) concluiu imóvel ID (\d+).*", r"Conclusão: \1 finalizou a matrícula ID \2"),
+            ]
+
+            def translate_message(msg):
+                for pattern, replacement in TRANSLATION_MAP:
+                    if re.match(pattern, msg, re.IGNORECASE):
+                        return re.sub(pattern, replacement, msg, flags=re.IGNORECASE)
+                return None
+
+            for log in parsed_logs:
+                # Filter by level
+                if level_filter != 'ALL':
+                    if log['level'] != level_filter:
+                        continue
+                
+                # Filter by search query
+                if search_query:
+                    query = search_query.lower()
+                    if (query not in log['message'].lower() and 
+                        query not in log['module'].lower()):
+                        continue
+                
+                # Apply translation
+                translation = translate_message(log['message'])
+                log['translated_message'] = translation
+                
+                filtered_logs.append(log)
+                
+                if len(filtered_logs) >= num_lines_int:
+                    break
+            
+            logs = filtered_logs
+            
+    except Exception as e:
+        flash(f"Erro ao ler logs: {e}", "error")
+        # Fallback to simple error log
+        logs = [{'timestamp': '', 'level': 'ERROR', 'module': 'system', 'message': f'Erro ao processar arquivo de log: {str(e)}', 'raw': str(e)}]
+    
+    return render_template("admin_logs.html", 
+                         logs=logs,
+                         num_lines=num_lines,
+                         level_filter=level_filter,
+                         search_query=search_query,
+                         log_file_exists=os.path.exists(LOG_FILE))
+
 
 
 # ==============================
@@ -1363,6 +1898,7 @@ def usuarios():
                 (username, password_hash, role, whatsapp, email, nome_completo, cpf)
             )
             conn.commit()
+            logger.info(f"Usuário criado: {current_user.username} criou novo usuário '{username}' (role: {role})")
             flash(f"Usuário {username} criado com sucesso.", "success")
             
             # Notify New User
@@ -1430,8 +1966,10 @@ def editar_usuario(user_id):
              # Also, should we set temporary? Request doesn't specify, but usually "reset" by admin means temporary.
              # Let's set temporary=1 to force change.
              cur.execute("UPDATE users SET password_hash=?, is_temporary_password=1 WHERE id=?", (hashed, user_id))
+             logger.info(f"Usuário editado: {current_user.username} editou usuário ID {user_id} ('{novo_nome}') e resetou senha")
              flash("Dados atualizados e senha resetada.", "success")
         else:
+             logger.info(f"Usuário editado: {current_user.username} editou usuário ID {user_id} ('{novo_nome}')")
              flash("Dados atualizados.", "success")
              
         conn.commit()
@@ -1488,9 +2026,15 @@ def excluir_usuario(user_id):
         
     conn = get_conn()
     cur = conn.cursor()
+    # Get username before deleting
+    cur.execute("SELECT username FROM users WHERE id=?", (user_id,))
+    row = cur.fetchone()
+    username = row['username'] if row else 'N/A'
+    
     cur.execute("DELETE FROM users WHERE id=?", (user_id,))
     conn.commit()
     conn.close()
+    logger.warning(f"Usuário excluído: {current_user.username} excluiu usuário ID {user_id} ('{username}')")
     flash("Usuário excluído.", "success")
     return redirect(url_for("usuarios"))
 
@@ -1501,15 +2045,22 @@ def excluir_imovel(imovel_id):
     if current_user.role != 'admin':
         flash("Apenas administradores podem excluir matrículas.", "danger")
         return redirect(url_for("index"))
-        
+    
+    # Get matricula number before deleting
     conn = get_conn()
     cur = conn.cursor()
+    cur.execute("SELECT numero_registro FROM imoveis WHERE id=?", (imovel_id,))
+    row = cur.fetchone()
+    matricula = row['numero_registro'] if row else 'N/A'
+    
     # Delete file if possible? User didn't ask, but good practice.
     # However, kept simple to just db delete as requested "Admin pode exclui matricula".
     cur.execute("DELETE FROM imoveis_lock WHERE imovel_id=?", (imovel_id,))
     cur.execute("DELETE FROM imoveis WHERE id=?", (imovel_id,))
     conn.commit()
     conn.close()
+    
+    logger.warning(f"Exclusão: {current_user.username} excluiu imóvel ID {imovel_id} (Matrícula: {matricula})")
     flash("Matrícula excluída com sucesso.", "success")
     return redirect(url_for("index"))
 
@@ -1597,13 +2148,14 @@ def concluir_imovel(imovel_id):
         ocr_text = row["ocr_text"] if "ocr_text" in row.keys() else ""
         learned_count = iago.learn(ocr_text, current_data)
         if learned_count > 0:
-            print(f"IAGO: Learned {learned_count} new patterns from Imovel {imovel_id}")
+            print(f"IAGO: Aprendeu {learned_count} novos padrões do Imóvel {imovel_id}")
 
     cur.execute("UPDATE imoveis SET status_trabalho='CONCLUIDO', concluded_by=? WHERE id=?", (current_user.username, imovel_id))
     conn.commit()
     conn.close()
     
     clear_lock(imovel_id)
+    logger.info(f"Conclusão: {current_user.username} concluiu imóvel ID {imovel_id} (Matrícula: {campos['numero_registro']})")
     flash("Matrícula salva e marcada como concluída.", "success")
     return redirect(url_for("index"))
 
@@ -1616,10 +2168,15 @@ def reabrir_imovel(imovel_id):
 
     conn = get_conn()
     cur = conn.cursor()
+    # Get matricula number
+    cur.execute("SELECT numero_registro FROM imoveis WHERE id=?", (imovel_id,))
+    row = cur.fetchone()
+    matricula = row['numero_registro'] if row else 'N/A'
     # Reset status and concluded_by
     cur.execute("UPDATE imoveis SET status_trabalho='PENDENTE', concluded_by=NULL WHERE id=?", (imovel_id,))
     conn.commit()
     conn.close()
+    logger.info(f"Reabertura: {current_user.username} reabriu imóvel ID {imovel_id} (Matrícula: {matricula})")
     flash("Matrícula reaberta.", "success")
     return redirect(url_for("index"))
     
@@ -1658,6 +2215,8 @@ def iago_reanalisar(imovel_id):
     
     changes = []
     current_data = dict(row)
+    
+    logger.info(f"IAGO Reanálise: {current_user.username} solicitou reanálise do imóvel ID {imovel_id} (Matrícula: {row['numero_registro']})")
     
     # Construct update query dynamically? No, safer to update known fields.
     # We need to map IAGO keys to DB columns.
@@ -1748,6 +2307,9 @@ def ver_pdf_imovel(imovel_id):
     row = cur.fetchone()
     conn.close()
     
+    # Audit Log
+    logger.info(f"Visualização: {current_user.username} visualizou PDF do imóvel ID {imovel_id}")
+    
     if not row or not row["arquivo_tiff"]:
         return "Imagem não encontrada", 404
         
@@ -1760,7 +2322,7 @@ def ver_pdf_imovel(imovel_id):
         pdf_stream = tiff_to_pdf_bytes(path)
         return Response(pdf_stream, mimetype='application/pdf')
     except Exception as e:
-        print(f"Error converting TIFF to PDF: {e}")
+        print(f"Erro ao converter TIFF para PDF: {e}")
         return "Erro ao processar imagem", 500
 
 @app.route("/imovel/<int:imovel_id>/visualizar")
@@ -1774,7 +2336,8 @@ def visualizar_imovel(imovel_id):
     
     if not row:
         return {"error": "Not found"}, 404
-        
+    
+    logger.info(f"Visualização: {current_user.username} visualizou imóvel ID {imovel_id} (Matrícula: {row['numero_registro']})")
     return dict(row)
 
 
@@ -1886,6 +2449,7 @@ def editar_imovel(imovel_id):
 
         # libera trava
         clear_lock(imovel_id)
+        logger.info(f"Edição: {current_user.username} editou imóvel ID {imovel_id} (Matrícula: {campos['numero_registro']})")
         flash("Matrícula atualizada com sucesso.", "success")
         return redirect(url_for("index"))
 
@@ -1926,6 +2490,10 @@ def editar_imovel(imovel_id):
         "tipos_logradouro": TIPO_LOGRADOURO_OPCOES,
         "usuario": usuario,
     }
+
+    # Audit Log for View/Edit Screen Access
+    logger.info(f"Visualização: {current_user.username} acessou tela de edição/detalhes do imóvel ID {imovel_id} (Matrícula: {row['numero_registro']})")
+
     return render_template("editar.html", **ctx)
 
 
@@ -1933,6 +2501,7 @@ def editar_imovel(imovel_id):
 def liberar_imovel(imovel_id):
     """Libera a trava manualmente (botão na tela)."""
     clear_lock(imovel_id)
+    logger.info(f"Liberação de trava: {current_user.username if current_user.is_authenticated else 'Sistema'} liberou trava do imóvel ID {imovel_id}")
     flash("Trava de edição liberada.", "info")
     return redirect(url_for("index"))
 
@@ -2000,8 +2569,10 @@ def backup_system():
     success, info = perform_backup(requester=f"Manual por {current_user.username}")
     
     if success:
+        logger.info(f"Backup: {current_user.username} criou backup manual com sucesso")
         flash(f"Backup realizado com sucesso: {info}", "success")
     else:
+        logger.error(f"Backup: {current_user.username} tentou criar backup manual mas falhou: {info}")
         flash(f"Falha no backup: {info}", "error")
 
     return redirect(url_for('config_email'))
@@ -2068,6 +2639,9 @@ def ver_tiff(imovel_id):
     except Exception as e:
         print(f"Error sending image view notification: {e}")
 
+    # Audit Log
+    logger.info(f"Visualização: {current_user.username} visualizou arquivo TIFF do imóvel ID {imovel_id}")
+
     # Seleciona o primeiro (ou lógica de qual mostrar)
     caminho = tif_files[0]
 
@@ -2117,6 +2691,7 @@ def alterar_senha():
         conn.commit()
         conn.close()
         
+        logger.info(f"Alteração de senha: {current_user.username} alterou sua senha")
         flash("Senha alterada com sucesso.", "success")
         return redirect(url_for("index"))
         
@@ -2178,6 +2753,8 @@ def reset_confirm(req_id):
         cur.execute("UPDATE password_resets SET status='CONCLUIDO' WHERE id=?", (req_id,))
         conn.commit()
         conn.close()
+        
+        logger.info(f"Recuperação de senha: {current_user.username} aprovou e resetou senha para usuário '{username_req}' (solicitação ID {req_id})")
         
         # Redireciona para tela de WhatsApp
         
@@ -2272,14 +2849,72 @@ def sobre_iago():
     return render_template("sobre_iago.html", stats=stats)
 
 @app.route("/exportar_json")
+@app.route("/exportar_json")
 @login_required
 def exportar_json():
+    """Tela de seleção do modo de exportação."""
+    conn = get_conn()
+    cur = conn.cursor()
+    cur.execute("SELECT value FROM system_config WHERE key='last_json_export'")
+    row = cur.fetchone()
+    conn.close()
+    
+    last_export = row[0] if row else None
+    
+    # Format date for display if exists
+    display_date = None
+    if last_export:
+        try:
+            # Assuming format stored is ISO
+            dt = datetime.fromisoformat(last_export)
+            display_date = dt.strftime("%d/%m/%Y às %H:%M")
+        except:
+            display_date = last_export
+
+    return render_template("exportar.html", last_export=display_date)
+
+
+@app.route("/baixar_json")
+@login_required
+def baixar_json():
+    mode = request.args.get("mode", "completo")
+    
     conn = get_conn()
     conn.row_factory = sqlite3.Row
     cur = conn.cursor()
-    cur.execute("SELECT * FROM imoveis")
+    
+    # Logic for filters
+    if mode == "incremental":
+        cur.execute("SELECT value FROM system_config WHERE key='last_json_export'")
+        row_config = cur.fetchone()
+        last_export_str = row_config[0] if row_config else None
+        
+        if last_export_str:
+            cur.execute("""
+                SELECT * FROM imoveis 
+                WHERE status_trabalho='CONCLUIDO' 
+                AND updated_at > ?
+            """, (last_export_str,))
+        else:
+            # First time running incremental = get all completed
+            cur.execute("SELECT * FROM imoveis WHERE status_trabalho='CONCLUIDO'")
+    else:
+        # Full export
+        cur.execute("SELECT * FROM imoveis WHERE status_trabalho='CONCLUIDO'")
+        
     rows = cur.fetchall()
+    
+    # Record current time for next incremental export
+    now_iso = datetime.now(timezone.utc).replace(tzinfo=None).isoformat()
+    
+    # Update Config
+    cur.execute("INSERT OR REPLACE INTO system_config (key, value) VALUES ('last_json_export', ?)", (now_iso,))
+    conn.commit()
     conn.close()
+
+    if not rows and mode == "incremental":
+        flash("Nenhum imóvel alterado ou concluído desde a última exportação.", "info")
+        return redirect(url_for("exportar_json"))
 
     real_list = []
     
@@ -2299,6 +2934,12 @@ def exportar_json():
             except:
                 contr = []
         
+        # Sanitize CEP (integers only)
+        raw_cep = str(d.get("cep", ""))
+        clean_cep = "".join(filter(str.isdigit, raw_cep))
+        if not clean_cep:
+            clean_cep = "69400000"
+
         item = {
             "TIPOENVIO": 0,
             "NUMERO_REGISTRO": str(d.get("numero_registro", "")),
@@ -2308,10 +2949,10 @@ def exportar_json():
             "TIPO_LOGRADOURO": get_int(d.get("tipo_logradouro"), 0),
             "NOME_LOGRADOURO": str(d.get("nome_logradouro", "")),
             "NUMERO_LOGRADOURO": str(d.get("numero_logradouro", "")),
-            "UF": get_int(d.get("uf"), 0),
-            "CIDADE": get_int(d.get("cidade"), 0),
+            "UF": 13, # Force Amazonas
+            "CIDADE": 1302504, # Force Manacapuru (Amazonas Standard)
             "BAIRRO": str(d.get("bairro", "")),
-            "CEP": str(d.get("cep", "")),
+            "CEP": clean_cep,
             "COMPLEMENTO": str(d.get("complemento", "")),
             "QUADRA": str(d.get("quadra", "")),
             "CONJUNTO": str(d.get("conjunto", "")),
@@ -2341,7 +2982,7 @@ def exportar_json():
 
     final_structure = {
         "INDICADOR_REAL": {
-            "CNS": "123456",
+            "CNS": "004879",
             "REAL": real_list
         }
     }
@@ -2349,23 +2990,35 @@ def exportar_json():
     # Notify Admins about download
     try:
         ip = request.remote_addr
-        # Mock location for now, or use an API if available/allowed. 
-        # Using a placeholder as requested "localização aproximada".
         location = {"city": "Unknown", "region": "Unknown", "time": datetime.now().strftime("%Y-%m-%d %H:%M:%S")}
         
-        file_info = f"Exportação JSON Completa ({len(final_structure['INDICADOR_REAL']['REAL'])} registros)"
+        file_info = f"Exportação JSON ({mode.upper()}) - {len(final_structure['INDICADOR_REAL']['REAL'])} registros"
         admin_emails = get_admin_emails()
         email_service.notify_admin_download(current_user.username, ip, location, file_info, admin_emails)
     except Exception as e:
         print(f"Error sending download notification: {e}")
+    
+    logger.info(f"Exportação: {current_user.username} exportou {len(final_structure['INDICADOR_REAL']['REAL'])} registros em JSON ({mode})")
+
+    # Filename format: CNS YYYY MM DD HH MM
+    cns_envio = "004879"
+    # Manaus Time (UTC-4)
+    manaus_time = datetime.now(timezone.utc) - timedelta(hours=4)
+    data_envio = manaus_time.strftime("%Y %m %d %H %M")
+    filename_json = f"{cns_envio} {data_envio}.json"
+
+    # Ensure UTF-8 encoding for special characters in JSON content
+    # Using indent=4 and explicit separators for clear formatting
+    json_bytes = json.dumps(final_structure, ensure_ascii=False, indent=4, separators=(',', ': ')).encode('utf-8')
 
     return Response(
-        json.dumps(final_structure, ensure_ascii=False, indent=2),
-        mimetype="application/json",
-        headers={"Content-Disposition": "attachment;filename=indicador_real.json"}
+        json_bytes,
+        mimetype="application/json; charset=utf-8",
+        headers={"Content-Disposition": f'attachment;filename="{filename_json}"'}
     )
 
 if __name__ == "__main__":
+    init_db()
     init_lock_table()
     
     # Obtém IP local para facilitar acesso na rede

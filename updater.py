@@ -17,6 +17,7 @@ def is_git_available():
     if GIT_AVAILABLE is not None:
         return GIT_AVAILABLE
     try:
+        # Suppress output to avoid "fatal: not a git repository" spam in logs
         subprocess.run(['git', '--version'], stdout=subprocess.PIPE, stderr=subprocess.PIPE, check=True)
         GIT_AVAILABLE = True
     except (FileNotFoundError, subprocess.CalledProcessError):
@@ -42,7 +43,9 @@ def run_git_command(args, cwd=None):
         )
         return result.stdout.strip()
     except subprocess.CalledProcessError as e:
-        logger.error(f"Git command failed: {e.stderr}")
+        # Only log if it's NOT a "not a git repo" error which is expected in frozen mode
+        if "not a git repository" not in e.stderr:
+            logger.error(f"Git command failed: {e.stderr}")
         return None
     except Exception as e:
         logger.error(f"Error running git: {e}")

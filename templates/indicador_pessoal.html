@@ -1,0 +1,718 @@
+{% extends "base.html" %}
+
+{% block conteudo %}
+<style>
+    /* Timeline styles */
+    .timeline-container {
+        overflow-x: auto;
+        padding: 40px 0;
+        white-space: nowrap;
+        position: relative;
+        min-height: 400px;
+    }
+
+    .timeline-line {
+        position: absolute;
+        top: 50%;
+        left: 0;
+        width: 100%;
+        height: 6px;
+        background: #e9ecef;
+        transform: translateY(-50%);
+        z-index: 1;
+        min-width: 1000px;
+    }
+
+    .timeline-item {
+        display: inline-block;
+        position: relative;
+        vertical-align: top;
+        width: 250px;
+        margin: 0 20px;
+        white-space: normal;
+        z-index: 2;
+        padding-top: 150px;
+    }
+
+    .timeline-item.top {
+        margin-top: -160px;
+    }
+
+    /* Adjust for zig-zag */
+    .timeline-dot {
+        position: absolute;
+        top: 50%;
+        left: 50%;
+        transform: translate(-50%, -50%);
+        width: 20px;
+        height: 20px;
+        background: #0d6efd;
+        border: 4px solid #fff;
+        border-radius: 50%;
+        box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+        z-index: 5;
+        cursor: pointer;
+        transition: transform 0.2s;
+    }
+
+    .timeline-dot:hover {
+        transform: translate(-50%, -50%) scale(1.2);
+    }
+
+    .timeline-connector {
+        position: absolute;
+        left: 50%;
+        width: 2px;
+        background: #dee2e6;
+        z-index: 3;
+    }
+
+    .timeline-item.top .timeline-connector {
+        top: 100%;
+        height: 50px;
+        /* Connect down to line */
+    }
+
+    .timeline-item.bottom .timeline-connector {
+        bottom: 100%;
+        height: 50px;
+        /* Connect up to line */
+        top: auto;
+    }
+
+    /* Better Timeline CSS Logic for inline-block */
+    .timeline-item.top {
+        transform: translateY(-50%);
+    }
+
+    .timeline-item.bottom {
+        transform: translateY(50%);
+    }
+
+
+    .timeline-content {
+        background: #fff;
+        border-radius: 8px;
+        box-shadow: 0 4px 6px rgba(0, 0, 0, 0.05);
+        padding: 15px;
+        border: 1px solid #e9ecef;
+        position: relative;
+        transition: transform 0.2s;
+        cursor: pointer;
+    }
+
+    .timeline-content:hover {
+        transform: translateY(-5px);
+        box-shadow: 0 8px 15px rgba(0, 0, 0, 0.1);
+    }
+
+    .border-l-primary {
+        border-left: 4px solid #0d6efd;
+    }
+
+    .border-l-success {
+        border-left: 4px solid #198754;
+    }
+
+    .border-l-warning {
+        border-left: 4px solid #ffc107;
+    }
+
+    .timeline-date-label {
+        position: absolute;
+        top: 50%;
+        left: 50%;
+        transform: translate(-50%, 25px);
+        font-weight: bold;
+        color: #6c757d;
+        font-size: 0.8rem;
+    }
+
+    /* Tweaks for new layout */
+    .card-hover:hover {
+        transform: translateY(-2px);
+        box-shadow: 0 .5rem 1rem rgba(0, 0, 0, .15) !important;
+        transition: all .2s;
+    }
+</style>
+
+<div class="d-flex justify-content-between align-items-center mb-4">
+    <div>
+        <h2 class="fw-bold text-primary mb-0">Indicador Pessoal</h2>
+        <p class="text-muted small mb-0">Histórico de atos e proprietários</p>
+    </div>
+    <div class="btn-group">
+        <button class="btn btn-outline-success" data-bs-toggle="modal" data-bs-target="#importModal">
+            <i class="bi bi-file-earmark-excel"></i> Importar Excel
+        </button>
+        <button class="btn btn-outline-info" onclick="extractFromAcervo()">
+            <i class="bi bi-magic"></i> Extrair do Acervo
+        </button>
+    </div>
+</div>
+
+<!-- ======================= -->
+<!-- LIST VIEW (SUMMARY)     -->
+<!-- ======================= -->
+<div id="listView">
+    <div class="card shadow-sm mb-4">
+        <div class="card-body">
+            <div class="input-group mb-3">
+                <span class="input-group-text"><i class="bi bi-search"></i></span>
+                <input type="text" class="form-control" id="searchSummary"
+                    placeholder="Buscar por Matrícula, Nome ou CPF..." onkeyup="if(event.key==='Enter') loadSummary()">
+                <button class="btn btn-primary" onclick="loadSummary()">Filtrar</button>
+            </div>
+
+            <div class="table-responsive">
+                <table class="table table-hover align-middle">
+                    <thead class="table-light">
+                        <tr>
+                            <th>Matrícula</th>
+                            <th>Proprietário / Parte (Exemplo)</th>
+                            <th class="text-center">Qtd. Atos</th>
+                            <th class="text-center">Último Ato</th>
+                            <th class="text-end">Ações</th>
+                        </tr>
+                    </thead>
+                    <tbody id="summaryTableBody">
+                        <!-- Loaded via JS -->
+                    </tbody>
+                </table>
+            </div>
+            <div id="summaryLoading" class="text-center py-5 d-none">
+                <div class="spinner-border text-primary"></div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- ======================= -->
+<!-- DETAIL VIEW (TIMELINE)  -->
+<!-- ======================= -->
+<div id="detailView" style="display: none;">
+
+    <!-- Header: Layout matching Editar Matrículas -->
+    <div class="d-flex justify-content-between align-items-center mb-3">
+        <div>
+            <button class="btn btn-outline-secondary me-2" onclick="backToList()">
+                <i class="bi bi-arrow-left"></i> Voltar
+            </button>
+            <span class="h4 fw-bold align-middle">Matrícula <span id="detailMatricula"
+                    class="text-primary"></span></span>
+        </div>
+        <div>
+            <!-- Image Button (Hidden initially) -->
+            <button id="btnVerImagem" class="btn btn-info text-white d-none" onclick="openImagePopup()">
+                <i class="bi bi-file-image"></i> Ver Imagem
+            </button>
+            <button class="btn btn-primary ms-2" onclick="openModalNew()">
+                <i class="bi bi-plus-lg"></i> Novo Registro
+            </button>
+        </div>
+    </div>
+
+    <!-- Property Details (From imoveis table) - REMOVED AS REQUESTED -->
+    <div id="propertyDetailsSection" class="d-none"></div>
+
+    <div id="propertyNotFoundMsg" class="d-none"></div>
+
+    <!-- Timeline Area -->
+    <div class="card shadow-sm mb-4">
+        <div class="card-body bg-light position-relative" style="overflow-x: auto;">
+            <div id="timelineArea" class="timeline-container">
+                <!-- Timeline rendered here -->
+            </div>
+        </div>
+    </div>
+
+    <!-- Full History Table -->
+    <div class="card shadow-sm">
+        <div class="card-header bg-white fw-bold">Histórico de Registros</div>
+        <div class="card-body p-0">
+            <div class="table-responsive">
+                <table class="table table-striped mb-0">
+                    <thead class="table-light">
+                        <tr>
+                            <th>Data Reg.</th>
+                            <th>Matrícula</th>
+                            <th>Nome (Parte)</th>
+                            <th>CPF/CNPJ</th>
+                            <th>Ato</th>
+                            <th>Data Venda</th>
+                            <th class="text-end">Ações</th>
+                        </tr>
+                    </thead>
+                    <tbody id="pessoalTableBody">
+                        <!-- Loaded via JS -->
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- ======================= -->
+<!-- MODALS                  -->
+<!-- ======================= -->
+
+<!-- Edit/Create Modal -->
+<div class="modal fade" id="recordModal" tabindex="-1">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header bg-primary text-white">
+                <h5 class="modal-title" id="modalTitle">Novo Registro</h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <form id="recordForm">
+                    <input type="hidden" id="recordId">
+                    <div class="row">
+                        <div class="col-md-3 mb-3">
+                            <label class="form-label">Matrícula</label>
+                            <input type="text" class="form-control" id="n_matricula" required>
+                        </div>
+                        <div class="col-md-3 mb-3">
+                            <label class="form-label">Data Reg/Av</label>
+                            <input type="date" class="form-control" id="dt_reg_averb" required>
+                        </div>
+                        <div class="col-md-6 mb-3">
+                            <label class="form-label">Tipo de Ato</label>
+                            <input type="text" class="form-control" id="tipo_ato" required list="atoOptions">
+                            <datalist id="atoOptions">
+                                <option value="Compra e Venda">
+                                <option value="Averbação">
+                                <option value="Registro">
+                                <option value="Hipoteca">
+                                <option value="Cancelamento">
+                            </datalist>
+                        </div>
+                    </div>
+                    <div class="row">
+                        <div class="col-md-8 mb-3">
+                            <label class="form-label">Nome (Parte/Proprietário)</label>
+                            <input type="text" class="form-control" id="nome" required>
+                        </div>
+                        <div class="col-md-4 mb-3">
+                            <label class="form-label">CPF/CNPJ</label>
+                            <input type="text" class="form-control" id="cpf_cnpj">
+                        </div>
+                    </div>
+                    <div class="row">
+                        <div class="col-md-4 mb-3">
+                            <label class="form-label">Data Venda (Opicional)</label>
+                            <input type="date" class="form-control" id="dt_venda">
+                        </div>
+                        <div class="col-md-8 mb-3">
+                            <label class="form-label">Observação</label>
+                            <input type="text" class="form-control" id="observacao">
+                        </div>
+
+                        <!-- Level 3: Active Learning Checkbox -->
+                        <div class="col-12 mt-2">
+                            <div class="form-check form-switch p-3 border rounded bg-light">
+                                <input class="form-check-input" type="checkbox" id="teachIago">
+                                <label class="form-check-label fw-bold text-primary" for="teachIago">
+                                    <i class="bi bi-robot"></i> Ensinar IAGO (Marque se corrigiu dados)
+                                </label>
+                                <div class="form-text small">
+                                    Se você corrigiu dados que a IA errou, marque esta opção para que o IAGO aprenda com
+                                    sua correção.
+                                </div>
+                            </div>
+                        </div>
+
+                    </div>
+                </form>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
+                <button type="button" class="btn btn-primary" onclick="saveRecord()">Salvar</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Import Modal -->
+<div class="modal fade" id="importModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">Importar Excel</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <div class="alert alert-info small">
+                    Colunas: <strong>NOME, CNPJCPF, NMATRICULA, TIPODEATO, DTREGAVERB, DTVENDA</strong>.
+                </div>
+                <input type="file" class="form-control" id="excelFile" accept=".xlsx, .xls">
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
+                <button type="button" class="btn btn-success" onclick="uploadExcel()">Importar</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+    let currentDetailData = [];
+    let activeMatricula = null;
+    let activeImovelId = null; // For image link
+
+    document.addEventListener('DOMContentLoaded', function () {
+        loadSummary();
+    });
+
+    function getCsrfToken() {
+        return document.querySelector('meta[name="csrf-token"]')?.getAttribute('content') || '';
+    }
+
+    function parseDate(dateStr) {
+        if (!dateStr) return null;
+        // Try ISO first (YYYY-MM-DD)
+        let parts = dateStr.split('-');
+        if (parts.length === 3) return new Date(parts[0], parts[1] - 1, parts[2]);
+
+        // Try BR format (DD/MM/YYYY)
+        parts = dateStr.split('/');
+        if (parts.length === 3) return new Date(parts[2], parts[1] - 1, parts[0]);
+
+        return new Date(dateStr); // Fallback
+    }
+
+    function formatDateToInput(dateStr) {
+        // Converts DD/MM/YYYY or similar to YYYY-MM-DD for input type=date
+        const d = parseDate(dateStr);
+        if (!d || isNaN(d)) return '';
+        const y = d.getFullYear();
+        const m = String(d.getMonth() + 1).padStart(2, '0');
+        const day = String(d.getDate()).padStart(2, '0');
+        return `${y}-${m}-${day}`;
+    }
+
+    // --- SUMMARY / LIST VIEW ---
+    function loadSummary() {
+        const search = document.getElementById('searchSummary').value;
+        const tbody = document.getElementById('summaryTableBody');
+        const loading = document.getElementById('summaryLoading');
+
+        tbody.innerHTML = '';
+        loading.classList.remove('d-none');
+
+        fetch(`/indicador_pessoal/api/summary?search=${encodeURIComponent(search)}`)
+            .then(r => r.json())
+            .then(data => {
+                loading.classList.add('d-none');
+                if (data.length === 0) {
+                    tbody.innerHTML = '<tr><td colspan="5" class="text-center py-4">Nenhum registro encontrado.</td></tr>';
+                    return;
+                }
+                data.forEach(item => {
+                    const tr = document.createElement('tr');
+                    tr.className = 'card-hover cursor-pointer';
+                    tr.onclick = (e) => {
+                        // Avoid trigger if button clicked
+                        if (e.target.tagName !== 'BUTTON' && e.target.tagName !== 'I') openDetail(item.n_matricula);
+                    };
+
+                    const dateStr = item.ultima_data ? new Date(item.ultima_data).toLocaleDateString('pt-BR') : '-';
+
+                    tr.innerHTML = `
+                        <td class="fw-bold text-primary">${item.n_matricula}</td>
+                        <td>${item.nome || 'Desconhecido'}</td>
+                        <td class="text-center"><span class="badge bg-secondary rounded-pill">${item.qtd_atos}</span></td>
+                        <td class="text-center small">${dateStr}</td>
+                        <td class="text-end">
+                            <button class="btn btn-sm btn-outline-primary" onclick="openDetail('${item.n_matricula}')">
+                                <i class="bi bi-eye"></i> Detalhes
+                            </button>
+                        </td>
+                    `;
+                    tbody.appendChild(tr);
+                });
+            })
+            .catch(err => {
+                loading.classList.add('d-none');
+                console.error(err);
+                alert('Erro ao carregar lista.');
+            });
+    }
+
+    // --- DETAIL VIEW ---
+    function openDetail(matricula) {
+        activeMatricula = matricula;
+        document.getElementById('detailMatricula').innerText = matricula;
+
+        document.getElementById('listView').style.display = 'none';
+        document.getElementById('detailView').style.display = 'block';
+
+        // Reset Header
+        document.getElementById('propertyDetailsSection').classList.add('d-none');
+        document.getElementById('propertyNotFoundMsg').classList.add('d-none');
+        document.getElementById('btnVerImagem').classList.add('d-none');
+
+        // Load Details from Indicator
+        loadDetailData(matricula);
+        // Load Property Header from Imoveis
+        loadPropertyHeader(matricula);
+    }
+
+    function loadPropertyHeader(matricula) {
+        fetch(`/indicador_pessoal/api/property/${encodeURIComponent(matricula)}`)
+            .then(r => r.json())
+            .then(res => {
+                if (res.found && res.data) {
+                    const d = res.data;
+                    activeImovelId = d.id;
+
+                    // Show Image Button if exists
+                    if (d.arquivo_tiff) {
+                        document.getElementById('btnVerImagem').classList.remove('d-none');
+                    }
+                } else {
+                    // document.getElementById('propertyNotFoundMsg').classList.remove('d-none'); // Msg hidden too
+                }
+            })
+            .catch(err => console.error("Error loading property details: ", err));
+    }
+
+    function openImagePopup() {
+        if (!activeImovelId) return;
+        const width = 1200;
+        const height = 800;
+        const url = `/imovel/${activeImovelId}/ver_tiff`;
+        window.open(url, `Popup${activeImovelId}`, `width=${width},height=${height},resizable=yes,scrollbars=yes`);
+    }
+
+    function backToList() {
+        activeMatricula = null;
+        activeImovelId = null;
+        document.getElementById('detailView').style.display = 'none';
+        document.getElementById('listView').style.display = 'block';
+    }
+
+    function loadDetailData(matricula) {
+        const timelineArea = document.getElementById('timelineArea');
+        // Loading State
+        timelineArea.innerHTML = '<div class="timeline-line"></div><div class="text-center w-100 mt-5"><div class="spinner-border text-primary"></div></div>';
+
+        fetch(`/indicador_pessoal/api/list?search=${encodeURIComponent(matricula)}`)
+            .then(r => r.json())
+            .then(data => {
+                const filtered = data.filter(d => d.n_matricula == matricula);
+                currentDetailData = filtered;
+
+                renderTimeline(filtered);
+                renderDetailTable(filtered);
+            })
+            .catch(err => console.error(err));
+    }
+
+    function renderTimeline(data) {
+        const container = document.getElementById('timelineArea');
+        container.innerHTML = '<div class="timeline-line"></div>';
+
+        if (data.length === 0) {
+            container.innerHTML += '<div class="text-center w-100 mt-5 pt-5 text-muted">Sem dados para esta matrícula.</div>';
+            return;
+        }
+
+        const sortedDetails = [...data].sort((a, b) => {
+            const dA = parseDate(a.dt_reg_averb) || new Date(0);
+            const dB = parseDate(b.dt_reg_averb) || new Date(0);
+            return dA - dB;
+        });
+
+        let isTop = true;
+
+        sortedDetails.forEach(item => {
+            const itemDiv = document.createElement('div');
+            itemDiv.className = `timeline-item ${isTop ? 'top' : 'bottom'}`;
+
+            const dateObj = parseDate(item.dt_reg_averb);
+            const year = dateObj ? dateObj.getFullYear() : '????';
+            const dateStr = dateObj ? dateObj.toLocaleDateString('pt-BR') : item.dt_reg_averb;
+
+            let borderClass = 'border-l-primary';
+            const ato = (item.tipo_ato || '').toLowerCase();
+            if (ato.includes('venda')) borderClass = 'border-l-success';
+            if (ato.includes('averba')) borderClass = 'border-l-warning';
+
+            itemDiv.innerHTML = `
+                <div class="timeline-dot" onclick="editRecord(${item.id})"></div>
+                <!-- <div class="timeline-connector"></div> CSS handled -->
+                <div class="timeline-date-label">${year}</div>
+                <div class="timeline-content ${borderClass}" onclick="editRecord(${item.id})">
+                    <div class="fw-bold text-truncate" style="max-width: 200px;" title="${item.nome}">${item.nome}</div>
+                    <div class="small text-muted mb-1">${item.tipo_ato}</div>
+                    <div class="d-flex justify-content-between small">
+                        <span class="badge bg-light text-dark border">Mat. ${item.n_matricula}</span>
+                        <span class="text-secondary">${dateStr}</span>
+                    </div>
+                </div>
+            `;
+            container.appendChild(itemDiv);
+            isTop = !isTop;
+        });
+    }
+
+    function renderDetailTable(data) {
+        const tbody = document.getElementById('pessoalTableBody');
+        tbody.innerHTML = '';
+
+        if (data.length === 0) {
+            tbody.innerHTML = '<tr><td colspan="7" class="text-center">Nenhum registro.</td></tr>';
+            return;
+        }
+
+        data.forEach(item => {
+            const dateObj = parseDate(item.dt_reg_averb);
+            const dateStr = dateObj ? dateObj.toLocaleDateString('pt-BR') : item.dt_reg_averb;
+
+            const tr = document.createElement('tr');
+            tr.innerHTML = `
+                <td>${dateStr}</td>
+                <td><span class="badge bg-light text-dark border">${item.n_matricula}</span></td>
+                <td>${item.nome}</td>
+                <td>${item.cpf_cnpj || '-'}</td>
+                <td>${item.tipo_ato}</td>
+                <td>${item.dt_venda || '-'}</td>
+                <td class="text-end">
+                    <button class="btn btn-sm btn-outline-primary me-1" onclick="editRecord(${item.id})"><i class="bi bi-pencil"></i></button>
+                    <button class="btn btn-sm btn-outline-danger" onclick="deleteRecord(${item.id})"><i class="bi bi-trash"></i></button>
+                </td>
+             `;
+            tbody.appendChild(tr);
+        });
+    }
+
+    // --- ACTIONS ---
+
+    const modal = new bootstrap.Modal(document.getElementById('recordModal'));
+    const importModal = new bootstrap.Modal(document.getElementById('importModal'));
+
+    function openModalNew() {
+        document.getElementById('recordForm').reset();
+        document.getElementById('recordId').value = '';
+        document.getElementById('modalTitle').innerText = 'Novo Registro';
+
+        // Pre-fill matricula if active
+        if (activeMatricula) {
+            document.getElementById('n_matricula').value = activeMatricula;
+        }
+
+        modal.show();
+    }
+
+    function editRecord(id) {
+        const item = currentDetailData.find(d => d.id === id);
+        if (!item) return;
+
+        document.getElementById('recordId').value = item.id;
+        document.getElementById('nome').value = item.nome;
+        document.getElementById('cpf_cnpj').value = item.cpf_cnpj;
+        document.getElementById('n_matricula').value = item.n_matricula;
+        document.getElementById('tipo_ato').value = item.tipo_ato;
+
+        // Critical Fix: Format DD/MM/YYYY to YYYY-MM-DD for input type="date"
+        document.getElementById('dt_reg_averb').value = formatDateToInput(item.dt_reg_averb);
+        document.getElementById('dt_venda').value = formatDateToInput(item.dt_venda);
+
+        document.getElementById('observacao').value = item.observacao || '';
+
+        document.getElementById('modalTitle').innerText = 'Editar Registro';
+        modal.show();
+    }
+
+    function saveRecord() {
+        const id = document.getElementById('recordId').value;
+        const body = {
+            id: id ? parseInt(id) : null,
+            nome: document.getElementById('nome').value,
+            cpf_cnpj: document.getElementById('cpf_cnpj').value,
+            n_matricula: document.getElementById('n_matricula').value,
+            tipo_ato: document.getElementById('tipo_ato').value,
+            dt_reg_averb: document.getElementById('dt_reg_averb').value,
+            dt_venda: document.getElementById('dt_venda').value,
+            observacao: document.getElementById('observacao').value
+        };
+
+        fetch('/indicador_pessoal/api/save', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'X-CSRFToken': getCsrfToken()
+            },
+            body: JSON.stringify(body)
+        })
+            .then(r => r.json())
+            .then(res => {
+                if (res.status === 'success') {
+                    // Active Learning Check
+                    if (document.getElementById('teachIago').checked) {
+                        fetch('/indicador_pessoal/learn', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json', 'X-CSRFToken': getCsrfToken() },
+                            body: JSON.stringify(body)
+                        });
+                    }
+
+                    modal.hide();
+                    if (activeMatricula) loadDetailData(activeMatricula);
+                    loadSummary(); // Update Summary counts
+                } else {
+                    alert('Erro: ' + res.message);
+                }
+            });
+    }
+
+    function deleteRecord(id) {
+        if (!confirm('Excluir este registro?')) return;
+        fetch(`/indicador_pessoal/api/delete/${id}`, {
+            method: 'POST',
+            headers: { 'X-CSRFToken': getCsrfToken() }
+        })
+            .then(r => r.json())
+            .then(res => {
+                if (res.status === 'success') {
+                    if (activeMatricula) loadDetailData(activeMatricula);
+                    loadSummary();
+                } else {
+                    alert('Erro: ' + res.message);
+                }
+            });
+    }
+
+    function uploadExcel() {
+        const input = document.getElementById('excelFile');
+        if (!input.files.length) return;
+        const formData = new FormData();
+        formData.append('file', input.files[0]);
+
+        fetch('/indicador_pessoal/import', {
+            method: 'POST',
+            headers: { 'X-CSRFToken': getCsrfToken() },
+            body: formData
+        }).then(r => r.json()).then(res => {
+            alert(res.message);
+            importModal.hide();
+            loadSummary();
+        });
+    }
+
+    function extractFromAcervo() {
+        if (!confirm('Iniciar extração em massa do acervo?')) return;
+        // Show generic loading?
+        document.body.style.cursor = 'wait';
+        fetch('/indicador_pessoal/extract', {
+            method: 'POST',
+            headers: { 'X-CSRFToken': getCsrfToken() }
+        }).then(r => r.json()).then(res => {
+            document.body.style.cursor = 'default';
+            alert(res.message);
+            loadSummary();
+        });
+    }
+</script>
+{% endblock %}
