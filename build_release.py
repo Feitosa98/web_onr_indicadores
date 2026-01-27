@@ -33,7 +33,9 @@ def main():
     
     # 2. Build Server (Main App)
     print("--- Building Indicador Server ---")
-    run_command(['pyinstaller', 'Indicador Server.spec', '--clean', '--noconfirm'])
+    # Use sys.executable to ensure we run PyInstaller from the *current* python environment (venv)
+    pyinstaller_cmd = [sys.executable, '-m', 'PyInstaller', 'Indicador Server.spec', '--clean', '--noconfirm']
+    run_command(pyinstaller_cmd)
     
     # 3. Create Payload Zip
     print("--- Creating payload.zip ---")
@@ -68,7 +70,7 @@ def main():
     add_data_arg = f"payload.zip;."
     
     installer_cmd = [
-        'pyinstaller',
+        sys.executable, '-m', 'PyInstaller',
         '--onefile',
         '--noconsole',
         '--name', INSTALLER_NAME,

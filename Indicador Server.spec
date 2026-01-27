@@ -1,26 +1,27 @@
 # -*- mode: python ; coding: utf-8 -*-
 
 
-from PyInstaller.utils.hooks import collect_all
-
 datas = [('templates', 'templates'), ('static', 'static'), ('imoveis_web.py', '.')]
 binaries = []
-hiddenimports = ['imoveis_web', 'iago', 'waitress', 'pystray', 'PIL', 'PIL._tkinter_finder', 'dotenv', 'psycopg2', 'engineio.async_drivers.threading']
+hiddenimports = ['imoveis_web', 'iago', 'waitress', 'pystray', 'PIL', 'PIL._tkinter_finder', 'dotenv', 'psycopg2', 'engineio.async_drivers.threading', 'flask_wtf', 'flask_wtf.csrf', 'wtforms']
 
-# Force collection of flask_wtf and wtforms
-tmp_ret = collect_all('flask_wtf')
-datas += tmp_ret[0]
-binaries += tmp_ret[1]
-hiddenimports += tmp_ret[2]
-
-tmp_ret = collect_all('wtforms')
-datas += tmp_ret[0]
-binaries += tmp_ret[1]
-hiddenimports += tmp_ret[2]
+# Manual inclusion of problematic packages
+import os
+site_packages = os.path.join(os.getcwd(), '.venv', 'Lib', 'site-packages')
+if os.path.exists(site_packages):
+    # Add flask_wtf
+    fwtf_path = os.path.join(site_packages, 'flask_wtf')
+    if os.path.exists(fwtf_path):
+        datas.append((fwtf_path, 'flask_wtf'))
+    
+    # Add wtforms
+    wtforms_path = os.path.join(site_packages, 'wtforms')
+    if os.path.exists(wtforms_path):
+        datas.append((wtforms_path, 'wtforms'))
 
 a = Analysis(
     ['server_gui.py'],
-    pathex=[],
+    pathex=[site_packages], # Add site-packages to pathex explicitly
     binaries=binaries,
     datas=datas,
     hiddenimports=hiddenimports,
