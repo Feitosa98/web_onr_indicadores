@@ -62,6 +62,16 @@ python imoveis_web.py
 ```
 O servidor iniciará em `http://localhost:5000` (ou no IP da sua rede local listado no terminal).
 
+## 💿 Instalação Windows (Executável)
+
+Se preferir não usar linha de comando, utilize o instalador criado:
+
+1.  Execute `Instalador_Indicador_Real.exe` (na pasta `dist/`).
+2.  Siga as instruções.
+3.  **Importante**: Marque a opção **"Liberar Firewall"** se deseja que outros computadores acessem o sistema.
+4.  O sistema criará um ícone na Área de Trabalho e iniciará o servidor.
+5.  Acesse `http://localhost:5000` no servidor ou `http://IP-DO-SERVIDOR:5000` em outros PCs.
+
 ## 🤝 Contribuição
 1.  Faça um Fork do projeto.
 2.  Crie uma Branch para sua Feature (`git checkout -b feature/NovaFeature`).

@@ -32,6 +32,10 @@ class InstallerGUI:
         
         tk.Label(root, text="Se nenhum backup for selecionado, um banco limpo será criado.\nUsuário padrão: admin / admin", font=("Arial", 8), fg="gray").pack(pady=5)
         
+        # Firewall Checkbox
+        self.var_firewall = tk.BooleanVar(value=True)
+        tk.Checkbutton(root, text="Liberar Firewall (Permitir acesso de outros PCs)", variable=self.var_firewall).pack(pady=5)
+
         # Install Button
         tk.Button(root, text="INSTALAR AGORA", command=self.install, bg="#4CAF50", fg="white", font=("Helvetica", 12, "bold"), pady=10).pack(pady=20)
         
@@ -87,6 +91,20 @@ class InstallerGUI:
 
             # 4. Create Shortcut
             self.create_shortcut()
+            
+            # 5. Firewall Rule
+            if self.var_firewall.get():
+                try:
+                    import subprocess
+                    subprocess.run([
+                        "netsh", "advfirewall", "firewall", "add", "rule",
+                        f"name={APP_NAME}", "dir=in", "action=allow",
+                        "protocol=TCP", "localport=5000"
+                    ], check=True, creationflags=subprocess.CREATE_NO_WINDOW if sys.platform=='win32' else 0)
+                    print("Firewall rule added.")
+                except Exception as e:
+                    messagebox.showwarning("Aviso", f"Não foi possível adicionar regra no Firewall:\n{e}\n\nVocê precisará liberar a porta 5000 manualmente.")
+
             
             messagebox.showinfo("Sucesso", "Instalação Concluída!\nO ícone foi criado na Área de Trabalho.")
             self.root.destroy()
