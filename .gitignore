@@ -24,6 +24,7 @@ Vwercoes/
 # User Content
 uploads/
 *.log
+*.log.*
 
 # OS specific
 Thumbs.db
