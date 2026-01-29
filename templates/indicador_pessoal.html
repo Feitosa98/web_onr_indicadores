@@ -600,6 +600,20 @@
             const year = dateObj ? dateObj.getFullYear() : '????';
             const dateStr = dateObj ? dateObj.toLocaleDateString('pt-BR') : item.dt_reg_averb;
 
+            // Helper for Date Input (YYYY-MM-DD)
+            function formatDateToInput(dateStr) {
+                if (!dateStr) return '';
+                // If already YYYY-MM-DD
+                if (dateStr.match(/^\d{4}-\d{2}-\d{2}$/)) return dateStr;
+
+                // If PT-BR DD/MM/YYYY
+                const parts = dateStr.split('/');
+                if (parts.length === 3) {
+                    return `${parts[2]}-${parts[1]}-${parts[0]}`;
+                }
+                return '';
+            }
+
             // Cycle colors
             const themeClass = themeClasses[colorIdx % themeClasses.length];
             colorIdx++;
