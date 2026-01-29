@@ -1247,31 +1247,9 @@ def add_security_headers(response):
     response.headers['X-XSS-Protection'] = '1; mode=block'
     return response
 
-@app.before_request
-def csrf_protect():
-    if request.method == "POST":
-        token = session.get('csrf_token')
-        
-        # Check Form Data
-        req_token = request.form.get('csrf_token')
-        
-        # Check Headers (for AJAX/Fetch)
-        if not req_token:
-            req_token = request.headers.get('X-CSRFToken')
-            
-        if not token or token != req_token:
-
-             # Special case for our API
-             if request.path.startswith('/indicador_pessoal/') or request.form.get("mode") == "ajax" or request.is_json:
-                 return jsonify({"status": "error", "message": f"Erro de Segurança (CSRF). Token Sessão: {token is not None}, Header: {req_token is not None}"}), 403
-             return "CSRF Token missing or invalid", 403
-
-def generate_csrf_token():
-    if 'csrf_token' not in session:
-        session['csrf_token'] = ''.join(random.choices(string.ascii_letters + string.digits, k=32))
-    return session['csrf_token']
-
-app.jinja_env.globals['csrf_token'] = generate_csrf_token
+# Removed manual CSRF protection in favor of Flask-WTF
+# Previous manual implementation caused conflict and "CSRF Token missing" errors
+# Flask-WTF handles token generation and validation automatically.
 
 @app.before_request
 def check_temporary_password():
