@@ -642,7 +642,8 @@
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
-                'X-CSRFToken': getCsrfToken()
+                'X-CSRFToken': getCsrfToken(),
+                'X-Requested-With': 'XMLHttpRequest'
             },
             body: JSON.stringify(body)
         })
@@ -653,7 +654,11 @@
                     if (document.getElementById('teachIago').checked) {
                         fetch('/indicador_pessoal/learn', {
                             method: 'POST',
-                            headers: { 'Content-Type': 'application/json', 'X-CSRFToken': getCsrfToken() },
+                            headers: {
+                                'Content-Type': 'application/json',
+                                'X-CSRFToken': getCsrfToken(),
+                                'X-Requested-With': 'XMLHttpRequest'
+                            },
                             body: JSON.stringify(body)
                         });
                     }
@@ -671,7 +676,10 @@
         if (!confirm('Excluir este registro?')) return;
         fetch(`/indicador_pessoal/api/delete/${id}`, {
             method: 'POST',
-            headers: { 'X-CSRFToken': getCsrfToken() }
+            headers: {
+                'X-CSRFToken': getCsrfToken(),
+                'X-Requested-With': 'XMLHttpRequest'
+            }
         })
             .then(r => r.json())
             .then(res => {
@@ -692,7 +700,10 @@
 
         fetch('/indicador_pessoal/import', {
             method: 'POST',
-            headers: { 'X-CSRFToken': getCsrfToken() },
+            headers: {
+                'X-CSRFToken': getCsrfToken(),
+                'X-Requested-With': 'XMLHttpRequest'
+            },
             body: formData
         }).then(r => r.json()).then(res => {
             alert(res.message);
@@ -707,7 +718,10 @@
         document.body.style.cursor = 'wait';
         fetch('/indicador_pessoal/extract', {
             method: 'POST',
-            headers: { 'X-CSRFToken': getCsrfToken() }
+            headers: {
+                'X-CSRFToken': getCsrfToken(),
+                'X-Requested-With': 'XMLHttpRequest'
+            }
         }).then(r => r.json()).then(res => {
             document.body.style.cursor = 'default';
             alert(res.message);

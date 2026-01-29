@@ -32,7 +32,7 @@ from flask import (
     jsonify
 )
 from flask_login import LoginManager, UserMixin, login_user, login_required, logout_user, current_user
-from flask_wtf.csrf import CSRFProtect
+from flask_wtf.csrf import CSRFProtect, CSRFError
 from werkzeug.security import generate_password_hash, check_password_hash
 
 # ... (existing config)
@@ -333,6 +333,20 @@ def unauthorized():
     if request.headers.get('X-Requested-With') == 'XMLHttpRequest' or request.form.get("mode") == "ajax":
         return jsonify({"status": "error", "message": "Sessão expirada. Faça login novamente.", "error": "unauthorized"}), 401
     return redirect(url_for('login'))
+
+
+@app.errorhandler(CSRFError)
+def handle_csrf_error(e):
+    # Check for AJAX or API path
+    if request.headers.get('X-Requested-With') == 'XMLHttpRequest' or "/api/" in request.path:
+        return jsonify({
+            "status": "error", 
+            "message": "Sessão expirada ou token inválido. Por favor, recarregue a página.", 
+            "error": "csrf_token_missing"
+        }), 400
+    
+    # Fallback for normal requests - show a simple error message using base template if possible, or just a string
+    return f"<h3>Erro de Sessão (CSRF)</h3><p>{e.description}</p><p><a href='/'>Voltar</a></p>", 400
 
 
 # Load config from .env or default
