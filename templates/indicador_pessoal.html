@@ -678,8 +678,17 @@
 
     // --- ACTIONS ---
 
-    const modal = new bootstrap.Modal(document.getElementById('recordModal'));
-    const importModal = new bootstrap.Modal(document.getElementById('importModal'));
+    let modal;
+    let importModal;
+
+    document.addEventListener('DOMContentLoaded', function () {
+        // Initialize modals after DOM is ready
+        const recordModalEl = document.getElementById('recordModal');
+        if (recordModalEl) modal = new bootstrap.Modal(recordModalEl);
+
+        const importModalEl = document.getElementById('importModal');
+        if (importModalEl) importModal = new bootstrap.Modal(importModalEl);
+    });
 
     function openModalNew() {
         document.getElementById('recordForm').reset();
