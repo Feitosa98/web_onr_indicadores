@@ -2,141 +2,186 @@
 
 {% block conteudo %}
 <style>
-    /* Timeline styles */
+    /* --- MODERN TIMELINE CSS --- */
     .timeline-container {
+        position: relative;
+        width: 100%;
+        height: 450px;
         overflow-x: auto;
         overflow-y: hidden;
-        padding: 20px 0;
         white-space: nowrap;
-        position: relative;
-        height: 320px;
-        /* Fixed height for consistency */
+        padding: 0 50px;
         display: flex;
-        /* Flex/Inline-flex could work, but stick to inline-block for scroll */
         align-items: center;
+        background: #f8f9fa;
+        /* Slight grey background for contrast */
+        border-radius: 8px;
     }
 
-    .timeline-line {
+    /* Main Central Line */
+    .timeline-line-bg {
         position: absolute;
         top: 50%;
         left: 0;
         width: 100%;
+        /* Will grow with content due to scrollWidth */
         height: 4px;
-        background: #dee2e6;
+        background: linear-gradient(90deg, #0dcaf0, #0d6efd, #6610f2, #d63384);
         transform: translateY(-50%);
         z-index: 1;
-        min-width: 1000px;
-        /* Ensure line spans even if few items */
+        min-width: 100%;
     }
 
+    /* Item Wrapper */
     .timeline-item {
-        display: inline-block;
         position: relative;
-        vertical-align: top;
-        width: 280px;
+        display: inline-block;
+        width: 240px;
+        /* Fixed width per item */
         height: 100%;
-        /* Spans full container height */
-        margin: 0 10px;
-        white-space: normal;
+        /* Spans full height of container */
+        vertical-align: top;
+        margin: 0;
+        flex-shrink: 0;
         z-index: 2;
     }
 
-    .timeline-dot {
-        position: absolute;
-        top: 50%;
-        left: 50%;
-        transform: translate(-50%, -50%);
-        width: 18px;
-        height: 18px;
-        background: #0d6efd;
-        border: 4px solid #fff;
-        border-radius: 50%;
-        box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
-        z-index: 5;
-        cursor: pointer;
-        transition: transform 0.2s;
+    /* Colors classes for dynamic assignment */
+    .theme-cyan {
+        --theme-color: #0dcaf0;
     }
 
-    .timeline-dot:hover {
-        transform: translate(-50%, -50%) scale(1.3);
+    .theme-blue {
+        --theme-color: #0d6efd;
     }
 
-    /* Content Box Positioning */
+    .theme-purple {
+        --theme-color: #6610f2;
+    }
+
+    .theme-pink {
+        --theme-color: #d63384;
+    }
+
+    /* CONTENT BOX */
     .timeline-content {
-        background: #fff;
-        border-radius: 8px;
-        box-shadow: 0 4px 6px rgba(0, 0, 0, 0.05);
-        padding: 12px;
-        border: 1px solid #e9ecef;
         position: absolute;
-        width: 90%;
-        /* relative to item width */
-        left: 5%;
-        transition: transform 0.2s;
+        width: 100%;
+        text-align: center;
+        padding: 0 15px;
+        transition: transform 0.3s ease;
         cursor: pointer;
     }
 
     .timeline-content:hover {
-        box-shadow: 0 8px 15px rgba(0, 0, 0, 0.1);
-        transform: translateY(-2px);
+        transform: scale(1.02);
     }
 
+    /* POSITIONING logic */
+    /* TOP ITEM */
     .timeline-item.top .timeline-content {
-        bottom: 55%;
-        /* Sit above the line */
+        bottom: 50%;
+        padding-bottom: 50px;
+        /* Space for the vertical stick */
     }
 
+    /* BOTTOM ITEM */
     .timeline-item.bottom .timeline-content {
-        top: 55%;
-        /* Sit below the line */
+        top: 50%;
+        padding-top: 50px;
+        /* Space for the vertical stick */
     }
 
-    /* Timeline Date Label */
-    .timeline-date-label {
-        position: absolute;
-        left: 50%;
-        transform: translateX(-50%);
-        font-weight: bold;
-        color: #6c757d;
-        font-size: 0.8rem;
-    }
-
-    .timeline-item.top .timeline-date-label {
-        top: 53%;
-        /* Just below line for Top items */
-    }
-
-    .timeline-item.bottom .timeline-date-label {
-        bottom: 53%;
-        /* Just above line for Bottom items? No, maybe keep it uniform */
-        top: 42%;
-    }
-
-    /* Connectors (Vertical Lines) */
-    .timeline-item::after {
+    /* The Vertical Stick */
+    .timeline-content::before {
         content: '';
         position: absolute;
         left: 50%;
         width: 2px;
-        background: #dee2e6;
-        z-index: 1;
+        height: 50px;
+        /* Fixed length of stick */
+        background-color: var(--theme-color, #6c757d);
         transform: translateX(-50%);
     }
 
-    /* Top Connector: Dot to Content Bottom */
-    .timeline-item.top::after {
-        top: 45%;
-        bottom: 50%;
-        height: 10%;
-        /* Approx distance */
+    /* Position stick for TOP */
+    .timeline-item.top .timeline-content::before {
+        bottom: 0;
     }
 
-    /* Bottom Connector: Dot to Content Top */
-    .timeline-item.bottom::after {
-        top: 50%;
-        height: 10%;
-        /* Approx distance */
+    /* Position stick for BOTTOM */
+    .timeline-item.bottom .timeline-content::before {
+        top: 0;
     }
+
+    /* The Dot at the end of the stick (near text) */
+    .timeline-content::after {
+        content: '';
+        position: absolute;
+        left: 50%;
+        width: 12px;
+        height: 12px;
+        background-color: var(--theme-color, #6c757d);
+        border-radius: 50%;
+        transform: translateX(-50%);
+        border: 2px solid #fff;
+        box-shadow: 0 0 0 2px var(--theme-color, #6c757d);
+    }
+
+    /* Dot position TOP */
+    .timeline-item.top .timeline-content::after {
+        bottom: 50px;
+        /* At the top of the stick */
+        margin-bottom: -6px;
+        /* center on line end */
+    }
+
+    /* Dot position BOTTOM */
+    .timeline-item.bottom .timeline-content::after {
+        top: 50px;
+        /* At the bottom of the stick */
+        margin-top: -6px;
+    }
+
+
+    /* The Central Dot (on the main line) */
+    .timeline-main-dot {
+        position: absolute;
+        top: 50%;
+        left: 50%;
+        width: 16px;
+        height: 16px;
+        background: #fff;
+        border: 4px solid var(--theme-color, #6c757d);
+        border-radius: 50%;
+        transform: translate(-50%, -50%);
+        z-index: 10;
+        box-shadow: 0 0 5px rgba(0, 0, 0, 0.1);
+    }
+
+    /* TEXT STYLES */
+    .timeline-year {
+        font-size: 1.5rem;
+        font-weight: 800;
+        color: var(--theme-color, #6c757d);
+        margin-bottom: 5px;
+        line-height: 1;
+    }
+
+    .timeline-text {
+        font-size: 0.9rem;
+        color: #495057;
+        background: #fff;
+        padding: 10px;
+        border-radius: 8px;
+        box-shadow: 0 2px 8px rgba(0, 0, 0, 0.05);
+        display: inline-block;
+        max-width: 100%;
+        border-top: 3px solid var(--theme-color, #6c757d);
+    }
+
+    /* Arrange order for Bottom items (Stick is above text) */
+    /* For CSS pseudo elements, they stay put. We just need to ensure margin is right */
 
     .border-l-primary {
         border-left: 4px solid #0d6efd;
@@ -530,12 +575,14 @@
             .catch(err => console.error(err));
     }
 
+    const themeClasses = ['theme-cyan', 'theme-blue', 'theme-purple', 'theme-pink'];
+
     function renderTimeline(data) {
         const container = document.getElementById('timelineArea');
-        container.innerHTML = '<div class="timeline-line"></div>';
+        container.innerHTML = '<div class="timeline-line-bg"></div>'; // Background Line
 
         if (data.length === 0) {
-            container.innerHTML += '<div class="text-center w-100 mt-5 pt-5 text-muted">Sem dados para esta matrícula.</div>';
+            container.innerHTML += '<div class="text-center w-50 mx-auto mt-5 text-muted">Sem dados para esta matrícula.</div>';
             return;
         }
 
@@ -546,36 +593,43 @@
         });
 
         let isTop = true;
+        let colorIdx = 0;
 
-        sortedDetails.forEach(item => {
-            const itemDiv = document.createElement('div');
-            itemDiv.className = `timeline-item ${isTop ? 'top' : 'bottom'}`;
-
+        sortedDetails.forEach((item, index) => {
             const dateObj = parseDate(item.dt_reg_averb);
             const year = dateObj ? dateObj.getFullYear() : '????';
             const dateStr = dateObj ? dateObj.toLocaleDateString('pt-BR') : item.dt_reg_averb;
 
-            let borderClass = 'border-l-primary';
-            const ato = (item.tipo_ato || '').toLowerCase();
-            if (ato.includes('venda')) borderClass = 'border-l-success';
-            if (ato.includes('averba')) borderClass = 'border-l-warning';
+            // Cycle colors
+            const themeClass = themeClasses[colorIdx % themeClasses.length];
+            colorIdx++;
+
+            // Clean Text
+            const nomeCurto = item.nome.length > 30 ? item.nome.substring(0, 27) + '...' : item.nome;
+
+            const itemDiv = document.createElement('div');
+            itemDiv.className = `timeline-item ${isTop ? 'top' : 'bottom'} ${themeClass}`;
 
             itemDiv.innerHTML = `
-                <div class="timeline-dot" onclick="editRecord(${item.id})"></div>
-                <!-- Connector handled by CSS ::after -->
-                <div class="timeline-date-label">${year}</div>
-                <div class="timeline-content ${borderClass}" onclick="editRecord(${item.id})">
-                    <div class="fw-bold text-truncate" style="max-width: 200px;" title="${item.nome}">${item.nome}</div>
-                    <div class="small text-muted mb-1">${item.tipo_ato}</div>
-                    <div class="d-flex justify-content-between small">
-                        <span class="badge bg-light text-dark border">Mat. ${item.n_matricula}</span>
-                        <span class="text-secondary">${dateStr}</span>
+                <!-- Center Dot -->
+                <div class="timeline-main-dot" onclick="editRecord(${item.id})"></div>
+                
+                <!-- Content Block (includes Stick & End Dot via CSS) -->
+                <div class="timeline-content" onclick="editRecord(${item.id})">
+                    <div class="timeline-year">${year}</div>
+                    <div class="timeline-text d-flex flex-column align-items-center">
+                        <span class="fw-bold d-block text-truncate w-100" title="${item.nome}">${nomeCurto}</span>
+                        <small class="text-muted d-block mt-1">${item.tipo_ato}</small>
+                        <span class="badge bg-light text-dark mt-2 border">${dateStr}</span>
                     </div>
                 </div>
             `;
             container.appendChild(itemDiv);
             isTop = !isTop;
         });
+
+        // Ensure scroll to start
+        container.scrollLeft = 0;
     }
 
     function renderDetailTable(data) {
