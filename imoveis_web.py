@@ -2850,49 +2850,7 @@ def sobre_iago():
         
     return render_template("sobre_iago.html", stats=stats)
 
-@app.route("/atualizacoes", methods=["GET", "POST"])
-@login_required
-def atualizacoes():
-    if current_user.role not in ['admin', 'supervisor']:
-        flash("Acesso restrito.", "danger")
-        return redirect(url_for('index'))
 
-    status_data = {
-        'available': False,
-        'commits_behind': 0,
-        'last_check': datetime.now().strftime("%d/%m/%Y %H:%M")
-    }
-    
-    current_version = updater.get_current_version_hash() or "Desconhecido"
-    changelog = []
-    
-    # Logic to handle verification
-    try:
-        if request.method == "POST":
-            action = request.form.get("action")
-            
-            if action == "update":
-                success, msg = updater.perform_update()
-                if success:
-                    flash(f"Atualização realizada: {msg}. Reinicie o servidor!", "success")
-                else:
-                    flash(f"Erro na atualização: {msg}", "danger")
-                return redirect(url_for('atualizacoes'))
-        
-        # Always check on load (simple version)
-        res = updater.check_for_updates()
-        if not res.get('error'):
-            status_data['available'] = res['update_available']
-            status_data['commits_behind'] = res.get('commits_behind', 0)
-            changelog = res.get('changelog', [])
-        else:
-             print(f"Update check error: {res.get('error')}")
-             
-    except Exception as e:
-        logger.error(f"Error in atualizacoes: {e}")
-        flash("Erro ao verificar atualizações.", "warning")
-
-    return render_template("atualizacoes.html", state=status_data, current_version=current_version, changelog=changelog)
 
 
 @app.route("/exportar_json")

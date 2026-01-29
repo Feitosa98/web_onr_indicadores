@@ -14,7 +14,8 @@ if os.path.exists(site_packages):
         'flask_wtf', 'wtforms', 'waitress', 'pystray', 'PIL', 
         'engineio', 'socketio', 'psycopg2', 'charset_normalizer',
         'requests', 'urllib3', 'idna', 'certifi', 'spacy', 
-        'thinc', 'srsly', 'cymem', 'preshed', 'murmurhash', 'blis'
+        'thinc', 'srsly', 'cymem', 'preshed', 'murmurhash', 'blis',
+        'win32com', 'win32', 'pythoncom', 'pywintypes'
     ]
 
     for package in packages_to_include:
