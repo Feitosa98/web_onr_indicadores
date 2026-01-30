@@ -48,8 +48,14 @@
 
                 <div class="d-grid gap-2 mt-4">
                     <a href="{{ url_for('baixar_json', mode='incremental') }}" class="btn btn-outline-success btn-lg">
-                        <i class="bi bi-filter-circle me-2"></i> Baixar Incremental
+                        <i class="bi bi-filter-circle me-2"></i> Gerar e Baixar Incremental
                     </a>
+
+                    {% if has_last_file %}
+                    <a href="{{ url_for('baixar_ultimo_json') }}" class="btn btn-secondary btn-sm mt-3">
+                        <i class="bi bi-download me-2"></i> Baixar Último Gerado (Cópia)
+                    </a>
+                    {% endif %}
                 </div>
             </div>
         </div>

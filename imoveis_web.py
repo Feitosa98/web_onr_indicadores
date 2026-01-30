@@ -2867,7 +2867,9 @@ def exportar_json():
         except:
             display_date = last_export
 
-    return render_template("exportar.html", last_export=display_date)
+    has_last_file = os.path.exists(os.path.join(app.config['UPLOAD_FOLDER'], "last_incremental.json"))
+
+    return render_template("exportar.html", last_export=display_date, has_last_file=has_last_file)
 
 
 @app.route("/baixar_json")
@@ -3007,10 +3009,44 @@ def baixar_json():
     # Using indent=4 and explicit separators for clear formatting
     json_bytes = json.dumps(final_structure, ensure_ascii=False, indent=4, separators=(',', ': ')).encode('utf-8')
 
+    # Save copy if incremental
+    if mode == "incremental":
+        try:
+            save_path = os.path.join(app.config['UPLOAD_FOLDER'], "last_incremental.json")
+            with open(save_path, "wb") as f:
+                f.write(json_bytes)
+        except Exception as e:
+            logger.error(f"Erro ao salvar cópia do JSON incremental: {e}")
+
     return Response(
         json_bytes,
         mimetype="application/json; charset=utf-8",
         headers={"Content-Disposition": f'attachment;filename="{filename_json}"'}
+    )
+
+@app.route("/baixar_ultimo_json")
+@login_required
+def baixar_ultimo_json():
+    """Baixa o último arquivo JSON incremental gerado."""
+    save_path = os.path.join(app.config['UPLOAD_FOLDER'], "last_incremental.json")
+    if not os.path.exists(save_path):
+        flash("Nenhum arquivo recente encontrado.", "warning")
+        return redirect(url_for("exportar_json"))
+        
+    # Filename format: CNS YYYY MM DD HH MM (Last)
+    cns_envio = "004879"
+    # Get file modification time for filename? Or just generic name?
+    # Let's use modification time to look consistent
+    mtime = os.path.getmtime(save_path)
+    dt = datetime.fromtimestamp(mtime)
+    data_envio = dt.strftime("%Y %m %d %H %M")
+    filename_json = f"{cns_envio} {data_envio}.json"
+    
+    return send_file(
+        save_path, 
+        mimetype="application/json", 
+        as_attachment=True, 
+        download_name=filename_json
     )
 
 if __name__ == "__main__":
