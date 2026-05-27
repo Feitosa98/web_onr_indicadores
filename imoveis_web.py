@@ -51,6 +51,26 @@ def get_base_path():
 BASE_DIR = get_base_path()
 DB_PATH = os.path.join(BASE_DIR, "imoveis.db")
 SECRET_KEY = os.getenv("FLASK_SECRET_KEY", "dev-fallback-secret-key-do-not-use-in-prod")
+# Estado da extração em background para o Mapa (IAGO com Rede Neural)
+mapa_extraction_status = {
+    "running": False,
+    "total": 0,
+    "current": 0,
+    "current_matricula": "",
+    "errors": 0,
+    "start_time": ""
+}
+
+# Estado da extração em background para Indicador Pessoal
+indicador_extraction_status = {
+    "running": False,
+    "total": 0,
+    "current": 0,
+    "current_matricula": "",
+    "errors": 0,
+    "start_time": "",
+    "user": ""
+}
 UPLOAD_FOLDER = os.path.join(BASE_DIR, "uploads")
 ALLOWED_EXTENSIONS = {'tif', 'tiff', 'png', 'jpg', 'jpeg', 'pdf'}
 
@@ -100,7 +120,16 @@ app.config['UPLOAD_FOLDER'] = UPLOAD_FOLDER
 if not os.path.exists(UPLOAD_FOLDER):
     os.makedirs(UPLOAD_FOLDER)
 
+from werkzeug.middleware.proxy_fix import ProxyFix
+
 app.config['PERMANENT_SESSION_LIFETIME'] = timedelta(seconds=3600)
+app.config['SESSION_COOKIE_SECURE'] = os.getenv('FLASK_SESSION_COOKIE_SECURE', 'False').lower() in ('true', '1', 't', 'y', 'yes')
+app.config['SESSION_COOKIE_HTTPONLY'] = True
+app.config['SESSION_COOKIE_SAMESITE'] = 'Lax'
+
+# Fix for reverse proxies (like Cloudflare, Nginx)
+app.wsgi_app = ProxyFix(app.wsgi_app, x_for=1, x_proto=1, x_host=1, x_prefix=1)
+
 csrf = CSRFProtect(app)
 
 # ==============================
@@ -258,15 +287,63 @@ def init_db():
             )
         """)
 
+        # 7. Mapa Atos
+        cur.execute("""
+            CREATE TABLE IF NOT EXISTS mapa_atos (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                imovel_id INTEGER,
+                numero_matricula TEXT,
+                motivo_envio INTEGER,
+                georreferenciamento INTEGER,
+                protocolo_prenotacao TEXT,
+                data_protocolo_prenotacao TEXT,
+                tipo_matricula_transcricao INTEGER,
+                tipo_ato INTEGER,
+                numero_ato INTEGER,
+                ato INTEGER,
+                alteracao_titulariedade INTEGER,
+                alteracao_imovel INTEGER,
+                valor_imposto REAL,
+                valor_transacao REAL,
+                cif TEXT,
+                cib TEXT,
+                cnm TEXT,
+                area_m2 REAL,
+                created_at TEXT,
+                updated_at TEXT
+            )
+        """)
+
+        # 8. Mapa Partes
+        cur.execute("""
+            CREATE TABLE IF NOT EXISTS mapa_partes (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                mapa_ato_id INTEGER,
+                nome_completo TEXT,
+                cpf_cnpj TEXT,
+                estrangeiro INTEGER,
+                nacionalidade INTEGER,
+                estado_civil INTEGER,
+                regime_bens INTEGER,
+                relacao_juridica INTEGER,
+                condicao_parte INTEGER,
+                percentual REAL,
+                data_inicio_rel_juridica TEXT,
+                created_at TEXT,
+                updated_at TEXT
+            )
+        """)
+
+
         # INSERT DEFAULT ADMIN
         # Only if users table is empty
         cur.execute("SELECT count(*) FROM users")
         if cur.fetchone()[0] == 0:
             hashed = generate_password_hash("admin") # Default password
             now = datetime.now(timezone.utc).replace(tzinfo=None).isoformat()
-            cur.execute("INSERT INTO users (username, password_hash, role, created_at, nome_completo) VALUES (?, ?, ?, ?, ?)", 
-                        ("admin", hashed, "admin", now, "Administrador"))
-            print("[INIT] Default admin user created.")
+            cur.execute("INSERT INTO users (username, password_hash, role, created_at, nome_completo, is_temporary_password) VALUES (?, ?, ?, ?, ?, ?)", 
+                        ("admin", hashed, "admin", now, "Administrador", 1))
+            print("[INIT] Default admin user created (with temporary password).")
         
         # Insert Default Config
         defaults = {
@@ -425,6 +502,9 @@ def indicador_pessoal():
 def api_list_indicador():
     conn = get_conn()
     cur = conn.cursor()
+    
+    # Filter params
+    search = request.args.get('search', '').lower()
     
     # Filter params
     search = request.args.get('search', '').lower()
@@ -597,87 +677,229 @@ def import_indicador_excel():
     except Exception as e:
         return jsonify({"status": "error", "message": f"Erro na importação: {str(e)}"}), 500
 
-@app.route('/indicador_pessoal/extract', methods=['POST'])
-@login_required
-def extract_indicador_from_db():
+def background_indicador_extraction():
+    global indicador_extraction_status
+    import re
+    import traceback
     try:
         conn = get_conn()
         cur = conn.cursor()
         
-        # Select existing imoveis with valid Data
         cur.execute("SELECT numero_registro, contribuinte, created_at, ocr_text FROM imoveis WHERE contribuinte IS NOT NULL AND contribuinte != ''")
         rows = cur.fetchall()
+        
+        indicador_extraction_status["total"] = len(rows)
+        indicador_extraction_status["current"] = 0
+        indicador_extraction_status["current_matricula"] = ""
+        indicador_extraction_status["errors"] = 0
+        indicador_extraction_status["start_time"] = datetime.now().strftime("%H:%M:%S")
+        indicador_extraction_status["user"] = current_user.username
+        indicador_extraction_status["running"] = True
         
         count = 0
         now = datetime.now().isoformat()
         
-        for row in rows:
-            # 1. Try to extract specific ACTS from OCR (Smarter IAGO)
-            acts = []
-            if row['ocr_text'] and len(row['ocr_text']) > 50:
-                 acts = iago.extract_acts(row['ocr_text'])
-            
-            if acts:
-                # Insert each found act
-                for act in acts:
-                    # Skip duplicate check for now or make it smart?
-                    # Let's check duplicate by Matricula + Act Type + Date
-                    cur.execute("SELECT id FROM indicador_pessoal WHERE n_matricula=? AND tipo_ato=? AND dt_reg_averb=?", 
-                                (row['numero_registro'], act['tipo_ato'], act['dt_ato']))
-                    if cur.fetchone():
-                        continue
-                        
-                    # Join parties found
-                    partes_str = ", ".join(act['partes']) if act['partes'] else "Não identificado"
-                    
-                    cur.execute("""
-                        INSERT INTO indicador_pessoal 
-                        (nome, cpf_cnpj, n_matricula, tipo_ato, dt_reg_averb, dt_venda, observacao, created_at, updated_at)
-                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-                    """, (
-                        partes_str, 
-                        "", # CPF is in partes_str usually
-                        row['numero_registro'],
-                        act['tipo_ato'],
-                        act['dt_ato'],
-                        "", # dt_venda could be same as dt_ato for compra e venda
-                        f"Extraído via IAGO (OCR): {act['header']}",
-                        now, now
-                    ))
-                    count += 1
-            else:
-                # 2. Fallback to Simple Contribuinte Extraction
-                try:
-                    contrib_list = json.loads(row['contribuinte'])
-                except:
-                    contrib_list = [row['contribuinte']]
-                    
-                if not contrib_list: continue
-
-                dt_reg = row['created_at'].split('T')[0] if row['created_at'] else now.split('T')[0]
+        for idx, row in enumerate(rows, 1):
+            if not indicador_extraction_status["running"]:
+                print("[BACKGROUND INDICADOR] Interrompida pelo usuário.")
+                break
                 
-                for nome in contrib_list:
-                    if not nome: continue
-                    
-                    cur.execute("SELECT id FROM indicador_pessoal WHERE n_matricula=? AND nome=?", (row['numero_registro'], nome))
-                    if cur.fetchone(): continue
+            indicador_extraction_status["current"] = idx
+            indicador_extraction_status["current_matricula"] = row['numero_registro']
+            
+            try:
+                # 1. Try to extract specific ACTS from OCR (Smarter IAGO)
+                acts = []
+                if row['ocr_text'] and len(row['ocr_text']) > 50:
+                     acts = iago.extract_acts(row['ocr_text'])
+                
+                if acts:
+                    for act in acts:
+                        for p in act.get('partes', []):
+                            nome_part = p.get('nome', '').strip()
+                            cpf_part = p.get('cpf_cnpj', '').strip()
+                            
+                            if not nome_part and not cpf_part:
+                                continue
+                            if not nome_part:
+                                nome_part = "Não identificado"
+                                
+                            tipo_ato = act.get('tipo_ato', 'Ato Não Identificado')
+                            dt_ato = act.get('dt_ato', '')
+                            header_ato = act.get('header', 'Ato')
+                            
+                            cur.execute("""
+                                SELECT id FROM indicador_pessoal 
+                                WHERE n_matricula=? AND nome=? AND cpf_cnpj=? AND tipo_ato=? AND dt_reg_averb=?
+                            """, (row['numero_registro'], nome_part, cpf_part, tipo_ato, dt_ato))
+                            if cur.fetchone():
+                                continue
+                                
+                            cur.execute("""
+                                INSERT INTO indicador_pessoal 
+                                (nome, cpf_cnpj, n_matricula, tipo_ato, dt_reg_averb, dt_venda, observacao, created_at, updated_at)
+                                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                            """, (
+                                nome_part, cpf_part, row['numero_registro'], tipo_ato, dt_ato, "", 
+                                f"Extraído via IAGO (OCR): {header_ato}", now, now
+                            ))
+                            count += 1
+                else:
+                    # 2. Fallback to Simple Contribuinte Extraction
+                    try:
+                        contrib_list = json.loads(row['contribuinte'])
+                    except:
+                        contrib_list = [row['contribuinte']]
                         
-                    cur.execute("""
-                        INSERT INTO indicador_pessoal 
-                        (nome, cpf_cnpj, n_matricula, tipo_ato, dt_reg_averb, dt_venda, observacao, created_at, updated_at)
-                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-                    """, (
-                        nome, "", row['numero_registro'], "Proprietário Atual", dt_reg, "", 
-                        "Extraído automaticamente (Fallback).", now, now
-                    ))
-                    count += 1
+                    if contrib_list:
+                        dt_reg = row['created_at'].split('T')[0] if row['created_at'] else now.split('T')[0]
+                        for nome in contrib_list:
+                            if not nome: continue
+                            
+                            nome_clean = nome.strip()
+                            cpf_clean = ""
+                            
+                            cpf_match = re.search(r"(\d{3}\.\d{3}\.\d{3}-\d{2}|\d{2}\.\d{3}\.\d{3}/\d{4}-\d{2})", nome_clean)
+                            if cpf_match:
+                                cpf_clean = cpf_match.group(1)
+                                nome_clean = nome_clean.replace(cpf_clean, "").replace(" - ", "").replace("()", "").strip("() -–—").strip()
+                            
+                            cur.execute("SELECT id FROM indicador_pessoal WHERE n_matricula=? AND nome=? AND cpf_cnpj=?", 
+                                        (row['numero_registro'], nome_clean, cpf_clean))
+                            if cur.fetchone(): continue
+                                
+                            cur.execute("""
+                                INSERT INTO indicador_pessoal 
+                                (nome, cpf_cnpj, n_matricula, tipo_ato, dt_reg_averb, dt_venda, observacao, created_at, updated_at)
+                                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                            """, (
+                                nome_clean, cpf_clean, row['numero_registro'], "Proprietário Atual", dt_reg, "", 
+                                "Extraído automaticamente (Fallback).", now, now
+                            ))
+                            count += 1
+                
+                conn.commit()
+            except Exception as inner_e:
+                conn.rollback()
+                indicador_extraction_status["errors"] += 1
+                print(f"[BACKGROUND INDICADOR ERROR] Matricula {row['numero_registro']}: {inner_e}")
+                
+        conn.close()
+    except Exception as e:
+        print(f"[BACKGROUND INDICADOR CRITICAL ERROR] {e}")
+        traceback.print_exc()
+    finally:
+        indicador_extraction_status["running"] = False
+        print("[BACKGROUND INDICADOR] Concluída ou Encerrada.")
+
+@app.route('/indicador_pessoal/extract', methods=['POST'])
+@login_required
+def extract_indicador_from_db():
+    import threading
+    if indicador_extraction_status["running"]:
+        return jsonify({
+            "status": "error",
+            "message": "Já existe uma extração em andamento."
+        }), 400
+        
+    t = threading.Thread(target=background_indicador_extraction)
+    t.daemon = True
+    t.start()
+    
+    return jsonify({
+        "status": "success",
+        "message": "Extração iniciada em segundo plano com sucesso."
+    })
+
+@app.route('/indicador_pessoal/extract_single/<path:matricula>', methods=['POST'])
+@login_required
+def extract_single_indicador(matricula):
+    import json
+    import re
+    try:
+        conn = get_conn()
+        cur = conn.cursor()
+        
+        cur.execute("SELECT ocr_text FROM imoveis WHERE numero_registro = ? AND ocr_text IS NOT NULL AND ocr_text != '' ORDER BY id DESC LIMIT 1", (matricula,))
+        row = cur.fetchone()
+        
+        if not row:
+            conn.close()
+            return jsonify({
+                "status": "error",
+                "message": "Nenhum texto OCR encontrado para esta matrícula. Importe o PDF primeiro."
+            }), 404
+            
+        ocr_text = row['ocr_text']
+        acts = iago.extract_acts(ocr_text)
+        
+        if not acts:
+            conn.close()
+            return jsonify({
+                "status": "error",
+                "message": "A IA não conseguiu estruturar dados a partir deste texto OCR."
+            }), 400
+            
+        now = datetime.now().isoformat()
+        count = 0
+        
+        for act in acts:
+            for p in act.get('partes', []):
+                nome_part = p.get('nome', '').strip()
+                cpf_part = p.get('cpf_cnpj', '').strip()
+                
+                if not nome_part and not cpf_part:
+                    continue
+                if not nome_part:
+                    nome_part = "Não identificado"
+                    
+                tipo_ato = act.get('tipo_ato', 'Ato Não Identificado')
+                dt_ato = act.get('dt_ato', '')
+                header_ato = act.get('header', 'Ato')
+                
+                cur.execute("""
+                    SELECT id FROM indicador_pessoal 
+                    WHERE n_matricula=? AND nome=? AND cpf_cnpj=? AND tipo_ato=? AND dt_reg_averb=?
+                """, (matricula, nome_part, cpf_part, tipo_ato, dt_ato))
+                if cur.fetchone():
+                    continue
+                    
+                cur.execute("""
+                    INSERT INTO indicador_pessoal 
+                    (nome, cpf_cnpj, n_matricula, tipo_ato, dt_reg_averb, dt_venda, observacao, created_at, updated_at)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """, (
+                    nome_part, cpf_part, matricula, tipo_ato, dt_ato, "", 
+                    f"Extraído via IAGO (OCR): {header_ato}", now, now
+                ))
+                count += 1
                 
         conn.commit()
         conn.close()
-        return jsonify({"status": "success", "message": f"{count} registros extraídos do acervo."})
         
+        return jsonify({
+            "status": "success",
+            "message": f"{count} novos atos/partes foram extraídos e salvos!"
+        })
     except Exception as e:
-        return jsonify({"status": "error", "message": str(e)}), 500
+        print(f"[EXTRACT SINGLE ERROR] {e}")
+        return jsonify({
+            "status": "error",
+            "message": f"Ocorreu um erro ao analisar: {str(e)}"
+        }), 500
+
+@app.route('/indicador_pessoal/api/extraction_status', methods=['GET'])
+@login_required
+def get_indicador_extraction_status():
+    return jsonify(indicador_extraction_status)
+
+@app.route('/indicador_pessoal/api/cancel_extraction', methods=['POST'])
+@login_required
+def cancel_indicador_extraction():
+    if indicador_extraction_status["running"]:
+        indicador_extraction_status["running"] = False
+        return jsonify({"status": "success", "message": "Cancelamento solicitado."})
+    return jsonify({"status": "error", "message": "Nenhuma extração em andamento."}), 400
 
 @app.route('/indicador_pessoal/learn', methods=['POST'])
 @login_required
@@ -724,6 +946,1013 @@ def train_iago():
             "message": f"IAGO aprendeu {learned_count} novos padrões com sucesso!"
         })
         
+    except Exception as e:
+        return jsonify({"status": "error", "message": str(e)}), 500
+
+@app.route('/indicador_pessoal/modelo_excel', methods=['GET'])
+@login_required
+def download_modelo_excel():
+    try:
+        import io
+        df = pd.DataFrame(columns=['NOME', 'CNPJCPF', 'NMATRICULA', 'TIPODEATO', 'DTREGAVERB', 'DTVENDA'])
+        output = io.BytesIO()
+        with pd.ExcelWriter(output, engine='openpyxl') as writer:
+            df.to_excel(writer, index=False, sheet_name='Indicador')
+        output.seek(0)
+        
+        response = Response(output.read())
+        response.headers.set('Content-Disposition', 'attachment', filename='modelo_indicador_pessoal.xlsx')
+        response.headers.set('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
+        return response
+    except Exception as e:
+        flash(f"Erro ao gerar modelo Excel: {str(e)}", "danger")
+        return redirect(url_for('indicador_pessoal'))
+
+@app.route('/indicador_pessoal/export/excel', methods=['GET'])
+@login_required
+def export_indicador_excel():
+    try:
+        import io
+        search = request.args.get('search', '').strip().lower()
+        
+        conn = get_conn()
+        cur = conn.cursor()
+        
+        query = "SELECT nome, cpf_cnpj, n_matricula, tipo_ato, dt_reg_averb, dt_venda, observacao FROM indicador_pessoal"
+        params = []
+        
+        if search:
+            query += " WHERE lower(nome) LIKE ? OR cpf_cnpj LIKE ? OR n_matricula LIKE ?"
+            params.extend([f"%{search}%", f"%{search}%", f"%{search}%"])
+            
+        query += " ORDER BY n_matricula ASC, dt_reg_averb DESC"
+        cur.execute(query, params)
+        rows = cur.fetchall()
+        conn.close()
+        
+        data = [dict(r) for r in rows]
+        df = pd.DataFrame(data)
+        
+        if not df.empty:
+            df.columns = ['NOME', 'CNPJCPF', 'NMATRICULA', 'TIPODEATO', 'DTREGAVERB', 'DTVENDA', 'OBSERVACAO']
+        else:
+            df = pd.DataFrame(columns=['NOME', 'CNPJCPF', 'NMATRICULA', 'TIPODEATO', 'DTREGAVERB', 'DTVENDA', 'OBSERVACAO'])
+            
+        output = io.BytesIO()
+        with pd.ExcelWriter(output, engine='openpyxl') as writer:
+            df.to_excel(writer, index=False, sheet_name='Indicador Export')
+        output.seek(0)
+        
+        response = Response(output.read())
+        response.headers.set('Content-Disposition', 'attachment', filename=f'export_indicador_pessoal_{datetime.now().strftime("%Y%m%d")}.xlsx')
+        response.headers.set('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
+        return response
+    except Exception as e:
+        flash(f"Erro ao exportar Excel: {str(e)}", "danger")
+        return redirect(url_for('indicador_pessoal'))
+
+@app.route('/indicador_pessoal/export/pdf/<matricula>')
+@login_required
+def export_indicador_pdf(matricula):
+    from fpdf import FPDF
+    from fpdf.enums import XPos, YPos
+    
+    conn = get_conn()
+    cur = conn.cursor()
+    
+    cur.execute("""
+        SELECT nome, cpf_cnpj, tipo_ato, dt_reg_averb, dt_venda, observacao 
+        FROM indicador_pessoal 
+        WHERE n_matricula = ?
+        ORDER BY dt_reg_averb ASC, created_at ASC
+    """, (matricula.strip(),))
+    rows = cur.fetchall()
+    
+    cur.execute("SELECT value FROM system_config WHERE key='cartorio_name'")
+    row_cartorio = cur.fetchone()
+    cartorio_name = row_cartorio[0] if row_cartorio and row_cartorio[0] else "SISTEMA INDICADOR REAL"
+    
+    conn.close()
+    
+    class PDFIndicador(FPDF):
+        def __init__(self, cartorio, mat, *args, **kwargs):
+            super().__init__(*args, **kwargs)
+            self.cartorio = cartorio.upper()
+            self.mat = mat
+            
+        def header(self):
+            # Top band
+            self.set_fill_color(30, 60, 114)  # #1e3c72
+            self.rect(0, 0, 210, 14, 'F')
+            
+            # Title inside color band
+            self.set_text_color(255, 255, 255)
+            self.set_font("Helvetica", 'B', 9)
+            self.set_xy(10, 3)
+            self.cell(190, 8, self.cartorio, align='L')
+            
+            # Document Title
+            self.set_text_color(45, 55, 72)
+            self.set_xy(10, 18)
+            self.set_font("Helvetica", 'B', 15)
+            self.cell(190, 8, f"HISTÓRICO DO INDICADOR PESSOAL", align='L')
+            
+            # Subtitle
+            self.set_font("Helvetica", '', 9.5)
+            self.set_text_color(113, 128, 150)
+            self.set_xy(10, 25)
+            self.cell(190, 5, f"Matrícula N° {self.mat} - Gerado em: {datetime.now().strftime('%d/%m/%Y %H:%M')}", align='L')
+            
+            # Divider line
+            self.set_draw_color(226, 232, 240)
+            self.set_line_width(0.5)
+            self.line(10, 31, 200, 31)
+            
+        def footer(self):
+            self.set_y(-15)
+            self.set_draw_color(226, 232, 240)
+            self.set_line_width(0.5)
+            self.line(10, 282, 200, 282)
+            
+            self.set_font("Helvetica", 'I', 8)
+            self.set_text_color(113, 128, 150)
+            self.cell(95, 10, "Sistema Indicador Real - Histórico de Proprietários", align='L')
+            self.cell(95, 10, f"Página {self.page_no()}/{{nb}}", align='R')
+            
+    pdf = PDFIndicador(cartorio_name, matricula)
+    pdf.alias_nb_pages()
+    pdf.add_page()
+    
+    # Write introduction
+    pdf.set_xy(10, 36)
+    pdf.set_font("Helvetica", '', 10)
+    pdf.set_text_color(74, 85, 104)
+    intro_txt = (
+        f"Este documento apresenta a relação histórica cronológica de proprietários, adquirentes, "
+        f"transmitentes e demais partes registradas na Matrícula N° {matricula}, extraída via Inteligência Artificial "
+        f"e revisada pela equipe."
+    )
+    pdf.multi_cell(190, 5, intro_txt, new_x=XPos.LMARGIN, new_y=YPos.NEXT)
+    pdf.ln(4)
+    
+    # Table Header
+    pdf.set_fill_color(30, 60, 114)
+    pdf.set_text_color(255, 255, 255)
+    pdf.set_draw_color(226, 232, 240)
+    pdf.set_line_width(0.3)
+    pdf.set_font("Helvetica", 'B', 9)
+    
+    pdf.cell(22, 9, "Data Reg.", border=1, fill=True, align='C')
+    pdf.cell(75, 9, " Nome da Parte / Proprietário", border=1, fill=True)
+    pdf.cell(33, 9, "CPF / CNPJ", border=1, fill=True, align='C')
+    pdf.cell(32, 9, "Ato", border=1, fill=True, align='C')
+    pdf.cell(28, 9, "Data Venda", border=1, fill=True, align='C', new_x=XPos.LMARGIN, new_y=YPos.NEXT)
+    
+    # Table Body
+    pdf.set_text_color(74, 85, 104)
+    pdf.set_font("Helvetica", '', 8.5)
+    
+    bg_alt = False
+    for r in rows:
+        if bg_alt:
+            pdf.set_fill_color(248, 250, 252)
+        else:
+            pdf.set_fill_color(255, 255, 255)
+            
+        dt_reg = r['dt_reg_averb']
+        try:
+            if '-' in dt_reg:
+                parts = dt_reg.split('T')[0].split('-')
+                if len(parts) == 3:
+                    dt_reg = f"{parts[2]}/{parts[1]}/{parts[0]}"
+        except:
+            pass
+            
+        dt_venda = r['dt_venda'] or "-"
+        try:
+            if '-' in dt_venda:
+                parts = dt_venda.split('T')[0].split('-')
+                if len(parts) == 3:
+                    dt_venda = f"{parts[2]}/{parts[1]}/{parts[0]}"
+        except:
+            pass
+            
+        pdf.cell(22, 9, str(dt_reg), border=1, fill=True, align='C')
+        pdf.cell(75, 9, f" {str(r['nome'])}", border=1, fill=True)
+        pdf.cell(33, 9, str(r['cpf_cnpj']) or "-", border=1, fill=True, align='C')
+        pdf.cell(32, 9, str(r['tipo_ato']), border=1, fill=True, align='C')
+        pdf.cell(28, 9, str(dt_venda), border=1, fill=True, align='C', new_x=XPos.LMARGIN, new_y=YPos.NEXT)
+        bg_alt = not bg_alt
+        
+    pdf_bytes = pdf.output()
+    response = Response(bytes(pdf_bytes))
+    response.headers.set('Content-Disposition', 'attachment', filename=f'historico_matricula_{matricula}_{datetime.now().strftime("%Y%m%d")}.pdf')
+    response.headers.set('Content-Type', 'application/pdf')
+    return response
+
+# ==============================
+# MAPA (JSON ONR) LOGIC
+# ==============================
+
+@app.route('/mapa')
+@login_required
+def mapa():
+    return render_template('mapa.html', cidades=CIDADE_NOME_TO_IBGE)
+
+@app.route('/mapa/editar/<int:ato_id>', methods=['GET', 'POST'])
+@login_required
+def editar_mapa_ato(ato_id):
+    conn = get_conn()
+    cur = conn.cursor()
+    
+    if request.method == 'POST':
+        protocolo = request.form.get('protocolo', '')
+        data_protocolo = request.form.get('data_protocolo', '')
+        tipo_ato = int(request.form.get('tipo_ato', 1))
+        numero_ato = int(request.form.get('numero_ato', 0))
+        ato_cod = int(request.form.get('ato_cod', 5))
+        alt_titulariedade = int(request.form.get('alteracao_titulariedade', 0))
+        alt_imovel = int(request.form.get('alteracao_imovel', 0))
+        val_transacao = float(request.form.get('valor_transacao', 0.0))
+        val_imposto = float(request.form.get('valor_imposto', 0.0))
+        motivo_envio = int(request.form.get('motivo_envio', 1))
+        georreferenciamento = 1 if request.form.get('georreferenciamento') == '1' else 0
+        tipo_matricula_transcricao = int(request.form.get('tipo_matricula_transcricao', 1))
+        numero_ordem_transcricao = request.form.get('numero_ordem_transcricao', '')
+        numero_matricula = request.form.get('numero_matricula', '')
+        cnm = request.form.get('cnm', '')
+        contexto = int(request.form.get('contexto', 1))
+        livro_matricula = request.form.get('livro_matricula', '')
+        folha_matricula = request.form.get('folha_matricula', '')
+        autorizacao_incra = 1 if request.form.get('autorizacao_incra') == '1' else 0
+        certificacao_incra = 1 if request.form.get('certificacao_incra') == '1' else 0
+        faixa_fronteira = 1 if request.form.get('faixa_fronteira') == '1' else 0
+        area_sn = 1 if request.form.get('area_sn') == '1' else 0
+        ccir_sncr = request.form.get('ccir_sncr', '')
+        car = request.form.get('car', '')
+        codigo_incra = request.form.get('codigo_incra', '')
+        unidade_area = int(request.form.get('unidade_area', 2))
+        area_m2 = float(request.form.get('area_m2', 0.0))
+        teach = True # IAGO training is now mandatory per user request
+        
+        now = datetime.now().isoformat()
+        
+        # Get imovel_id for IAGO teaching
+        cur.execute("SELECT imovel_id FROM mapa_atos WHERE id=?", (ato_id,))
+        row = cur.fetchone()
+        if not row:
+            conn.close()
+            flash("Ato não encontrado.", "danger")
+            return redirect(url_for('mapa'))
+            
+        imovel_id = row['imovel_id']
+        
+        # Update
+        cur.execute("""
+            UPDATE mapa_atos 
+            SET protocolo_prenotacao=?, data_protocolo_prenotacao=?, 
+                tipo_ato=?, numero_ato=?, ato=?, alteracao_titulariedade=?, alteracao_imovel=?, 
+                valor_transacao=?, valor_imposto=?, updated_at=?,
+                contexto=?, livro_matricula=?, folha_matricula=?,
+                autorizacao_incra=?, faixa_fronteira=?, area_sn=?, unidade_area=?,
+                numero_matricula=?, cnm=?, motivo_envio=?, georreferenciamento=?,
+                tipo_matricula_transcricao=?, numero_ordem_transcricao=?, area_m2=?,
+                ccir_sncr=?, car=?, certificacao_incra=?, codigo_incra=?,
+                status_trabalho='CONCLUIDO', concluded_by=?
+            WHERE id=?
+        """, (protocolo, data_protocolo, tipo_ato, numero_ato, ato_cod, alt_titulariedade, alt_imovel, 
+              val_transacao, val_imposto, now, 
+              contexto, livro_matricula, folha_matricula, 
+              autorizacao_incra, faixa_fronteira, area_sn, unidade_area,
+              numero_matricula, cnm, motivo_envio, georreferenciamento,
+              tipo_matricula_transcricao, numero_ordem_transcricao, area_m2,
+              ccir_sncr, car, certificacao_incra, codigo_incra,
+              current_user.username if hasattr(current_user, 'username') else 'admin',
+              ato_id))
+        
+        # Update MAPA_PARTES (Delete and Re-insert strategy for dynamic lists)
+        cur.execute("DELETE FROM mapa_partes WHERE mapa_ato_id = ?", (ato_id,))
+        
+        idx = 0
+        processed_count = 0
+        while processed_count < 20: # Safety limit for empty slots
+            nome = request.form.get(f'parte_nome_{idx}')
+            if nome is None:
+                idx += 1
+                processed_count += 1
+                continue
+            
+            # If name exists but is empty, we might want to skip or stop
+            if not nome.strip():
+                idx += 1
+                continue
+
+            cpf = request.form.get(f'parte_cpf_{idx}', '')
+            estrangeiro = int(request.form.get(f'parte_estrangeiro_{idx}', 0))
+            nacionalidade = int(request.form.get(f'parte_nacionalidade_{idx}', 76))
+            rnm = request.form.get(f'parte_rnm_{idx}', '')
+            passaporte = request.form.get(f'parte_passaporte_{idx}', '')
+            genero = int(request.form.get(f'parte_genero_{idx}', 1))
+            estado_civil = int(request.form.get(f'parte_estado_civil_{idx}', 1))
+            regime = int(request.form.get(f'parte_regime_{idx}', 0))
+            relacao = int(request.form.get(f'parte_relacao_{idx}', 1))
+            condicao = int(request.form.get(f'parte_condicao_{idx}', 1))
+            filhos = 1 if request.form.get(f'parte_filhos_{idx}') == '1' else 0
+            percentual = float(request.form.get(f'parte_percentual_{idx}', 100.0))
+            
+            cur.execute("""
+                INSERT INTO mapa_partes 
+                (mapa_ato_id, nome_completo, cpf_cnpj, estrangeiro, nacionalidade, rnm, passaporte, 
+                 genero, estado_civil, regime_bens, relacao_juridica, condicao_parte, filhos_brasileiros, 
+                 percentual, created_at, updated_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """, (ato_id, nome, cpf, estrangeiro, nacionalidade, rnm, passaporte, 
+                  genero, estado_civil, regime, relacao, condicao, filhos, percentual, now, now))
+            
+            idx += 1
+            processed_count = 0 # Reset safety if we found a valid entry
+        
+        if teach:
+            cur.execute("SELECT ocr_text FROM imoveis WHERE id=?", (imovel_id,))
+            im_row = cur.fetchone()
+            if im_row and im_row['ocr_text']:
+                iago.learn(im_row['ocr_text'], {
+                    "PROTOCOLO_MAPA": protocolo,
+                    "DATA_ATO_MAPA": data_protocolo
+                })
+        
+        conn.commit()
+        conn.close()
+        flash("Ato do Mapa atualizado com sucesso!", "success")
+        return redirect(url_for('mapa'))
+        
+    # GET
+    cur.execute("SELECT * FROM mapa_atos WHERE id=?", (ato_id,))
+    ato = cur.fetchone()
+    
+    cur.execute("SELECT * FROM mapa_partes WHERE mapa_ato_id=?", (ato_id,))
+    partes = cur.fetchall()
+    conn.close()
+    
+    if not ato:
+        flash("Ato não encontrado.", "danger")
+        return redirect(url_for('mapa'))
+        
+    return render_template('mapa_editar.html', ato=dict(ato), partes=[dict(p) for p in partes])
+
+@app.route('/mapa/api/list')
+@login_required
+def api_list_mapa():
+    conn = get_conn()
+    cur = conn.cursor()
+    search = request.args.get('search', '').lower()
+    
+    query = """
+        SELECT 
+            i.id as imovel_id, 
+            i.numero_registro as numero_matricula,
+            COUNT(DISTINCT m.id) as total_atos,
+            SUM(CASE WHEN m.status_trabalho = 'CONCLUIDO' THEN 1 ELSE 0 END) as concluidos,
+            (SELECT nome_completo FROM mapa_partes WHERE mapa_ato_id IN (SELECT id FROM mapa_atos WHERE imovel_id = i.id) ORDER BY id DESC LIMIT 1) as nome_parte
+        FROM imoveis i
+        INNER JOIN mapa_atos m ON i.id = m.imovel_id
+    """
+    params = []
+    
+    if search:
+        query += " WHERE (lower(i.numero_registro) LIKE ? OR lower(m.protocolo_prenotacao) LIKE ?)"
+        params.extend([f"%{search}%", f"%{search}%"])
+        
+    query += " GROUP BY i.id ORDER BY MAX(m.updated_at) DESC, i.id DESC LIMIT 100"
+    
+    cur.execute(query, params)
+    rows = cur.fetchall()
+    conn.close()
+    
+    data = [dict(row) for row in rows]
+    return jsonify(data)
+
+@app.route('/mapa/api/atos_por_imovel/<int:imovel_id>')
+@login_required
+def mapa_api_atos_por_imovel(imovel_id):
+    conn = get_conn()
+    cur = conn.cursor()
+    cur.execute("""
+        SELECT m.*, 
+               (SELECT nome_completo FROM mapa_partes WHERE mapa_ato_id = m.id LIMIT 1) as nome_parte
+        FROM mapa_atos m 
+        WHERE m.imovel_id = ? 
+        ORDER BY m.id ASC
+    """, (imovel_id,))
+    rows = cur.fetchall()
+    conn.close()
+    return jsonify([dict(row) for row in rows])
+
+@app.route('/mapa/api/stats')
+@login_required
+def mapa_api_stats():
+    conn = get_conn()
+    cur = conn.cursor()
+    
+    cur.execute("SELECT COUNT(*) as total FROM mapa_atos")
+    total = cur.fetchone()['total']
+    
+    cur.execute("SELECT COUNT(DISTINCT imovel_id) as imoveis FROM mapa_atos")
+    unique_imoveis = cur.fetchone()['imoveis']
+    
+    cur.execute("SELECT COUNT(*) as concluidos FROM mapa_atos WHERE status_trabalho='CONCLUIDO'")
+    concluidos = cur.fetchone()['concluidos']
+    
+    pendentes = total - concluidos
+    progresso = round((concluidos / total * 100), 1) if total > 0 else 0
+    
+    conn.close()
+    return jsonify({
+        "total": total,
+        "imoveis": unique_imoveis,
+        "concluidos": concluidos,
+        "pendentes": pendentes,
+        "progresso": progresso
+    })
+
+def background_mapa_extraction():
+    global mapa_extraction_status
+    import threading
+    
+    try:
+        # Abre conexão específica da thread
+        conn = get_conn()
+        cur = conn.cursor()
+        
+        # Seleciona todos os imóveis com ocr_text
+        cur.execute("SELECT id, numero_registro, ocr_text, contribuinte, created_at FROM imoveis WHERE ocr_text IS NOT NULL")
+        rows = cur.fetchall()
+        
+        mapa_extraction_status["total"] = len(rows)
+        mapa_extraction_status["current"] = 0
+        mapa_extraction_status["current_matricula"] = ""
+        mapa_extraction_status["errors"] = 0
+        mapa_extraction_status["start_time"] = datetime.now().strftime("%H:%M:%S")
+        mapa_extraction_status["running"] = True
+        
+        now = datetime.now().isoformat()
+        limit_date = (datetime.now() - timedelta(days=2)).isoformat()
+        
+        for idx, row in enumerate(rows, 1):
+            if not mapa_extraction_status["running"]:
+                print("[BACKGROUND EXTRACTION] Interrompida pelo usuário.")
+                break
+                
+            num_registro = row['numero_registro']
+            mapa_extraction_status["current"] = idx
+            mapa_extraction_status["current_matricula"] = num_registro
+            
+            if not row['ocr_text'] or len(row['ocr_text']) < 50:
+                continue
+                
+            try:
+                # Verificamos se já foi reprocessado nas últimas 48 horas para permitir continuar de onde parou
+                cur.execute("SELECT COUNT(*) as count FROM mapa_atos WHERE imovel_id=? AND created_at >= ?", (row['id'], limit_date))
+                if cur.fetchone()['count'] > 0:
+                    continue
+                
+                # 1. Extrai novos atos usando IAGO (fora de transação de escrita para evitar travar o banco de dados)
+                conn.commit()  # fecha qualquer transação de leitura ativa
+                acts = iago.extract_acts_mapa(row['ocr_text'])
+                
+                # 2. Limpa atos/partes anteriores para evitar duplicações
+                cur.execute("SELECT id FROM mapa_atos WHERE imovel_id=?", (row['id'],))
+                existing_atos = cur.fetchall()
+                for ato in existing_atos:
+                    cur.execute("DELETE FROM mapa_partes WHERE mapa_ato_id=?", (ato['id'],))
+                cur.execute("DELETE FROM mapa_atos WHERE imovel_id=?", (row['id'],))
+                
+                if acts:
+                    for act in acts:
+                        cur.execute("""
+                            INSERT INTO mapa_atos 
+                            (imovel_id, numero_matricula, motivo_envio, georreferenciamento, protocolo_prenotacao, 
+                            data_protocolo_prenotacao, tipo_matricula_transcricao, tipo_ato, numero_ato, ato, 
+                            alteracao_titulariedade, alteracao_imovel, valor_imposto, valor_transacao, area_m2, 
+                            created_at, updated_at, livro_matricula, folha_matricula, unidade_area)
+                            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                        """, (
+                            row['id'], num_registro, 1, 0, act.get('protocolo', ''), act.get('data_protocolo', ''),
+                            1, act.get('tipo_ato_cod', 1), act.get('numero_ato', 0), act.get('ato_cod', 5),
+                            act.get('alteracao_titulariedade', 0), act.get('alteracao_imovel', 0), 
+                            act.get('valor_imposto', 0.0), act.get('valor_transacao', 0.0), act.get('area', 0.0), 
+                            now, now, act.get('livro', ''), act.get('folha', ''), act.get('unidade_area', 2)
+                        ))
+                        
+                        ato_id = cur.lastrowid
+                        
+                        for p in act.get('partes_detalhadas', []):
+                            cur.execute("""
+                                INSERT INTO mapa_partes 
+                                (mapa_ato_id, nome_completo, cpf_cnpj, estrangeiro, nacionalidade, estado_civil, regime_bens, 
+                                relacao_juridica, condicao_parte, percentual, created_at, updated_at,
+                                rnm, passaporte, genero)
+                                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                            """, (
+                                ato_id, p.get('nome', ''), p.get('cpf', ''), p.get('estrangeiro', 0), 
+                                76, p.get('estado_civil', 1), 
+                                p.get('regime_bens', 0), p.get('relacao_juridica', 1), p.get('condicao_parte', 1), 
+                                100.0, now, now,
+                                p.get('rnm', ''), p.get('passaporte', ''), p.get('genero', 1)
+                            ))
+                else:
+                    # Fallback padrão
+                    cur.execute("""
+                        INSERT INTO mapa_atos 
+                        (imovel_id, numero_matricula, motivo_envio, georreferenciamento, protocolo_prenotacao, 
+                        data_protocolo_prenotacao, tipo_matricula_transcricao, tipo_ato, numero_ato, ato, 
+                        alteracao_titulariedade, alteracao_imovel, valor_imposto, valor_transacao, area_m2, created_at, updated_at)
+                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    """, (
+                        row['id'], num_registro, 1, 0, "", "", 
+                        1, 1, 1, 5, 0, 0, 0.0, 0.0, 0.0, now, now
+                    ))
+                    ato_id = cur.lastrowid
+                    
+                    contrib_str = row['contribuinte']
+                    contrib_list = []
+                    try:
+                        if contrib_str:
+                            if contrib_str.startswith('['):
+                                contrib_list = json.loads(contrib_str)
+                            else:
+                                contrib_list = [contrib_str]
+                    except:
+                        pass
+                        
+                    if not contrib_list:
+                        contrib_list = ["NÃO IDENTIFICADO"]
+                        
+                    for nome in contrib_list:
+                        if not nome: continue
+                        cur.execute("""
+                            INSERT INTO mapa_partes 
+                            (mapa_ato_id, nome_completo, cpf_cnpj, estrangeiro, nacionalidade, estado_civil, regime_bens, 
+                            relacao_juridica, condicao_parte, percentual, created_at, updated_at,
+                            rnm, passaporte, genero)
+                            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                        """, (
+                            ato_id, nome, "", 0, 76, 1, 0, 1, 2, 100.0, now, now, "", "", 1
+                        ))
+                
+                conn.commit()
+            except Exception as inner_e:
+                conn.rollback()
+                mapa_extraction_status["errors"] += 1
+                print(f"[BACKGROUND EXTRACTION ERROR] Matricula {num_registro}: {inner_e}")
+                
+        conn.close()
+    except Exception as e:
+        print(f"[BACKGROUND EXTRACTION CRITICAL ERROR] {e}")
+    finally:
+        mapa_extraction_status["running"] = False
+        print("[BACKGROUND EXTRACTION] Concluída ou Encerrada.")
+
+@app.route('/mapa/extract', methods=['POST'])
+@login_required
+def extract_mapa_from_db():
+    import threading
+    if mapa_extraction_status["running"]:
+        return jsonify({
+            "status": "error",
+            "message": "Já existe uma extração/reprocessamento em lote em andamento no background."
+        }), 400
+        
+    t = threading.Thread(target=background_mapa_extraction)
+    t.daemon = True
+    t.start()
+    
+    return jsonify({
+        "status": "success",
+        "message": "Extração em lote iniciada em segundo plano com sucesso."
+    })
+
+@app.route('/mapa/api/start_extraction_local', methods=['GET'])
+def start_extraction_local():
+    if request.remote_addr not in ['127.0.0.1', 'localhost', '::1']:
+        return "Unauthorized", 401
+    import threading
+    if mapa_extraction_status["running"]:
+        return jsonify({"status": "running", "message": "Já existe uma extração/reprocessamento em lote em andamento no background."})
+    t = threading.Thread(target=background_mapa_extraction)
+    t.daemon = True
+    t.start()
+    return jsonify({"status": "success", "message": "Extração iniciada via requisição local."})
+
+@app.route('/mapa/api/extraction_status_local', methods=['GET'])
+def get_mapa_extraction_status_local():
+    if request.remote_addr not in ['127.0.0.1', 'localhost', '::1']:
+        return "Unauthorized", 401
+    return jsonify(mapa_extraction_status)
+
+@app.route('/mapa/api/extraction_status', methods=['GET'])
+@login_required
+def get_mapa_extraction_status():
+    return jsonify(mapa_extraction_status)
+
+@app.route('/mapa/api/cancel_extraction', methods=['POST'])
+@login_required
+def cancel_mapa_extraction():
+    if mapa_extraction_status["running"]:
+        mapa_extraction_status["running"] = False
+        return jsonify({"status": "success", "message": "Cancelamento solicitado com sucesso."})
+    return jsonify({"status": "error", "message": "Nenhuma extração em andamento."}), 400
+
+@app.route('/mapa/api/export_json', methods=['GET'])
+@login_required
+def export_mapa_json():
+    # Retrieve all acts and format JSON
+    conn = get_conn()
+    cur = conn.cursor()
+    cur.execute("""
+        SELECT m.*, i.tipo_de_imovel, i.tipo_logradouro, i.nome_logradouro, i.numero_logradouro, 
+               i.cep, i.complemento, i.cidade, i.uf,
+               i.rural_car, i.rural_nirf, i.rural_ccir, i.rural_numero_incra, i.rural_sigef, i.rural_denominacaorural
+        FROM mapa_atos m
+        JOIN imoveis i ON m.imovel_id = i.id
+    """)
+    atos = cur.fetchall()
+    
+    imoveis_json = []
+    
+    for ato in atos:
+        # Fetch partes
+        cur.execute("SELECT * FROM mapa_partes WHERE mapa_ato_id = ?", (ato['id'],))
+        partes = cur.fetchall()
+        
+        tipo_imovel = ato['tipo_de_imovel'] or 1 # 1=Urbano, 2=Rural
+        
+        dados_pessoa = []
+        for p in partes:
+            pessoa_obj = {
+                "nome_completo": p['nome_completo'],
+                "cpf_cnpj": p['cpf_cnpj'].replace(".", "").replace("-", "").replace("/", "") if p['cpf_cnpj'] else "",
+                "estrangeiro": bool(p['estrangeiro']),
+                "nacionalidade": p['nacionalidade'] or 76,
+                "estado_civil": p['estado_civil'] or 1,
+                "relacao_juridica": p['relacao_juridica'] or 1,
+                "condicao_parte": p['condicao_parte'] or 1,
+                "percentual": p['percentual'] or 100.0
+            }
+            
+            if p['estado_civil'] in (2, 3, 6): # Casado, União Estável, etc.
+                pessoa_obj["regime_bens"] = p['regime_bens'] or 1
+
+            if p['data_inicio_rel_juridica']:
+                pessoa_obj["data_inicio_rel_juridica"] = p['data_inicio_rel_juridica']
+            elif ato['data_protocolo_prenotacao']:
+                pessoa_obj["data_inicio_rel_juridica"] = ato['data_protocolo_prenotacao']
+            
+            if ato['alteracao_titulariedade']:
+                pessoa_obj["condicao_parte"] = p['condicao_parte']
+                
+                
+            if p['rnm']:
+                pessoa_obj["rnm"] = p['rnm']
+                pessoa_obj["data_rnm"] = p['data_rnm']
+                pessoa_obj["emissor_rnm"] = p['emissor_rnm']
+            if p['passaporte']:
+                pessoa_obj["passaporte"] = p['passaporte']
+            if p['genero']:
+                pessoa_obj["genero"] = p['genero']
+            if p['filhos_brasileiros']:
+                pessoa_obj["filhos_brasileiros"] = bool(p['filhos_brasileiros'])
+                
+            dados_pessoa.append(pessoa_obj)
+            
+        # Format cidade to IBGE
+        cidade_nome = ato['cidade'] or ""
+        cod_ibge_mun = CIDADE_NOME_TO_IBGE.get(cidade_nome.upper(), 1302603) # Default Manaus/AM
+        
+        # Base Imovel Object
+        obj_imovel = {
+            "tipo_imovel": tipo_imovel,
+            "motivo_envio": ato['motivo_envio'],
+            "georreferenciamento": bool(ato['georreferenciamento']),
+        }
+        
+        if obj_imovel["georreferenciamento"]:
+            obj_imovel["numero_poligono"] = ato['imovel_id'] # Fallback
+            obj_imovel["categoria_poligono"] = 1
+        else:
+            if ato['motivo_envio'] in (1, 2):
+                obj_imovel["protocolo_prenotacao"] = ato['protocolo_prenotacao'] or ""
+                obj_imovel["data_protocolo_prenotacao"] = ato['data_protocolo_prenotacao'] or ""
+            
+        obj_imovel["tipo_matricula_transcricao"] = ato['tipo_matricula_transcricao']
+        
+        if ato['tipo_matricula_transcricao'] == 1:
+            obj_imovel["numero_matricula"] = ato['numero_matricula'] or ""
+            obj_imovel["data_matricula"] = ato['data_protocolo_prenotacao'] or ""
+            obj_imovel["livro_matricula"] = ato['livro_matricula'] or ""
+            obj_imovel["folha_matricula"] = ato['folha_matricula'] or ""
+            obj_imovel["cnm"] = ato['cnm'] or ""
+            
+        if ato['tipo_matricula_transcricao'] == 2:
+            obj_imovel["numero_transcricao"] = ato['numero_matricula'] or ""
+            obj_imovel["data_transcricao"] = ato['data_protocolo_prenotacao'] or ""
+            obj_imovel["livro_transcricao"] = ato['livro_matricula'] or ""
+            obj_imovel["folha_transcricao"] = ato['folha_matricula'] or ""
+            obj_imovel["numero_ordem_transcricao"] = ato['numero_ordem_transcricao'] or ""
+            
+        if ato['motivo_envio'] in (1, 3) and ato['tipo_matricula_transcricao'] == 1:
+            obj_imovel["tipo_ato"] = ato['tipo_ato']
+            obj_imovel["numero_ato"] = ato['numero_ato']
+            obj_imovel["ato"] = ato['ato']
+            if ato['ato'] == 3:
+                obj_imovel["alteracao_titulariedade"] = ato['alteracao_titulariedade']
+            if ato['ato'] == 4:
+                obj_imovel["alteracao_imovel"] = ato['alteracao_imovel']
+            if ato['ato'] in (2, 3):
+                obj_imovel["valor_imposto"] = ato['valor_imposto']
+                obj_imovel["valor_transacao"] = ato['valor_transacao']
+
+        # Context Specifics
+        if tipo_imovel == 1:
+            # Urbano
+            obj_imovel["contexto_urbano"] = ato['contexto'] or 1
+            if ato['motivo_envio'] in (1, 3) and ato['tipo_matricula_transcricao'] == 1:
+                obj_imovel["cif"] = ato['cif'] or ""
+                
+            obj_imovel["dados_imovel"] = [{
+                "tipo_logradouro": ato['tipo_logradouro'] or 250, # Rua
+                "logradouro": ato['nome_logradouro'] or "",
+                "numero_logradouro": ato['numero_logradouro'] or "S/N",
+                "cep": ato['cep'].replace("-", "") if ato['cep'] else "",
+                "complemento": ato['complemento'] or "",
+                "bairro": ato['bairro'] or "",
+                "cod_ibge_municipio": cod_ibge_mun,
+                "uf": ato['uf'] or 13, # AM
+                "area_m2": ato['area_m2'] or 0.0
+            }]
+        else:
+            # Rural
+            obj_imovel["contexto_rural"] = ato['contexto'] or 1
+            obj_imovel["ccir_sncr"] = ato['ccir_sncr'] or ""
+            obj_imovel["certificacao_incra"] = bool(ato['certificacao_incra'])
+            if ato['certificacao_incra']:
+                obj_imovel["codigo_incra"] = ato['codigo_incra'] or ""
+            obj_imovel["cib"] = ato['cib'] or ""
+            obj_imovel["car"] = ato['car'] or ""
+            obj_imovel["imovel_possui_nome"] = True if ato['rural_denominacaorural'] else False
+            obj_imovel["nome_imovel"] = ato['rural_denominacaorural'] or ""
+            obj_imovel["autorizacao_incra"] = bool(ato['autorizacao_incra'])
+            obj_imovel["faixa_fronteira"] = bool(ato['faixa_fronteira'])
+            obj_imovel["area_sn"] = bool(ato['area_sn'])
+            obj_imovel["area"] = {
+                "valor": ato['area_m2'] or 0.0,
+                "unidade": ato['unidade_area'] or 2
+            }
+
+                
+            obj_imovel["dados_imovel"] = [{
+                "endereco": f"{ato['nome_logradouro'] or ''} {ato['numero_logradouro'] or ''}".strip(),
+                "cep": ato['cep'].replace("-", "") if ato['cep'] else "",
+                "cod_ibge_municipio": cod_ibge_mun,
+                "uf": ato['uf'] or 13 # AM
+            }]
+            
+        if dados_pessoa:
+            obj_imovel["dados_pessoa"] = dados_pessoa
+            
+        imoveis_json.append(obj_imovel)
+        
+    conn.close()
+    
+    # Root object
+    onr_json = {
+        "cns": CNS_CODIGO,
+        "imoveis": imoveis_json
+    }
+    
+    # Save to temp file and return
+    temp_path = os.path.join(UPLOAD_FOLDER, "mapa_onr_export.json")
+    with open(temp_path, "w", encoding="utf-8") as f:
+        json.dump(onr_json, f, ensure_ascii=False, indent=2)
+        
+    return send_file(temp_path, as_attachment=True, download_name=f"mapa_onr_{datetime.now().strftime('%Y%m%d')}.json")
+
+@app.route('/mapa/api/save_ato', methods=['POST'])
+@login_required
+def api_save_mapa_ato():
+    try:
+        data = request.json
+        ato_id = data.get('id')
+        protocolo = data.get('protocolo', '')
+        data_protocolo = data.get('data_protocolo', '')
+        tipo_ato = data.get('tipo_ato', 1)
+        numero_ato = data.get('numero_ato', 0)
+        ato_cod = data.get('ato_cod', 5)
+        alt_titulariedade = data.get('alteracao_titulariedade', 0)
+        alt_imovel = data.get('alteracao_imovel', 0)
+        val_transacao = data.get('valor_transacao', 0.0)
+        val_imposto = data.get('valor_imposto', 0.0)
+        teach = data.get('teach', False)
+        
+        conn = get_conn()
+        cur = conn.cursor()
+        now = datetime.now().isoformat()
+        
+        # Get existing ato to find imovel_id for IAGO teaching
+        cur.execute("SELECT imovel_id FROM mapa_atos WHERE id=?", (ato_id,))
+        row = cur.fetchone()
+        if not row:
+            return jsonify({"status": "error", "message": "Ato não encontrado"}), 404
+            
+        imovel_id = row['imovel_id']
+        
+        # Update mapa_atos
+        cur.execute("""
+            UPDATE mapa_atos 
+            SET protocolo_prenotacao=?, data_protocolo_prenotacao=?, 
+                tipo_ato=?, numero_ato=?, ato=?, alteracao_titulariedade=?, alteracao_imovel=?, 
+                valor_transacao=?, valor_imposto=?, updated_at=?
+            WHERE id=?
+        """, (protocolo, data_protocolo, tipo_ato, numero_ato, ato_cod, alt_titulariedade, alt_imovel, 
+              val_transacao, val_imposto, now, ato_id))
+        
+        conn.commit()
+        
+        if teach:
+            # Fetch OCR text to teach IAGO
+            cur.execute("SELECT ocr_text FROM imoveis WHERE id=?", (imovel_id,))
+            imovel_row = cur.fetchone()
+            if imovel_row and imovel_row['ocr_text']:
+                learning_data = {
+                    "PROTOCOLO_MAPA": protocolo,
+                    "DATA_ATO_MAPA": data_protocolo
+                }
+                # Remove empty
+                learning_data = {k:v for k,v in learning_data.items() if v}
+                if learning_data:
+                    iago.learn(imovel_row['ocr_text'], learning_data)
+        
+        conn.close()
+        
+        msg = "Ato atualizado."
+        if teach:
+            msg += " IAGO aprendeu com sua correção!"
+            
+        return jsonify({"status": "success", "message": msg})
+    except Exception as e:
+        return jsonify({"status": "error", "message": str(e)}), 500
+
+@app.route('/mapa/api/toggle_status/<int:ato_id>', methods=['POST'])
+@login_required
+def api_toggle_mapa_status(ato_id):
+    try:
+        conn = get_conn()
+        cur = conn.cursor()
+        cur.execute("SELECT status_trabalho FROM mapa_atos WHERE id=?", (ato_id,))
+        row = cur.fetchone()
+        if not row:
+            return jsonify({"status": "error", "message": "Ato não encontrado"}), 404
+            
+        current_status = row['status_trabalho']
+        new_status = 'CONCLUIDO' if current_status != 'CONCLUIDO' else 'PENDENTE'
+        concluded_by = session.get('username', 'admin') if new_status == 'CONCLUIDO' else None
+        
+        cur.execute("UPDATE mapa_atos SET status_trabalho=?, concluded_by=?, updated_at=? WHERE id=?", 
+                    (new_status, concluded_by, datetime.now().isoformat(), ato_id))
+        conn.commit()
+        conn.close()
+        
+        return jsonify({"status": "success", "message": "Status atualizado.", "new_status": new_status})
+    except Exception as e:
+        return jsonify({"status": "error", "message": str(e)}), 500
+
+@app.route('/mapa/api/delete_ato/<int:ato_id>', methods=['POST'])
+@login_required
+def api_delete_mapa_ato(ato_id):
+    if current_user.role not in ['admin', 'supervisor']:
+        return jsonify({"status": "error", "message": "Acesso não autorizado."}), 403
+    try:
+        conn = get_conn()
+        cur = conn.cursor()
+        cur.execute("DELETE FROM mapa_partes WHERE mapa_ato_id=?", (ato_id,))
+        cur.execute("DELETE FROM mapa_atos WHERE id=?", (ato_id,))
+        conn.commit()
+        conn.close()
+        return jsonify({"status": "success", "message": "Ato excluído com sucesso."})
+    except Exception as e:
+        return jsonify({"status": "error", "message": str(e)}), 500
+
+@app.route('/mapa/api/reprocess/<int:imovel_id>', methods=['POST'])
+@login_required
+def api_reprocess_mapa(imovel_id):
+    if current_user.role not in ['admin', 'supervisor']:
+        return jsonify({"status": "error", "message": "Acesso não autorizado."}), 403
+    try:
+        conn = get_conn()
+        cur = conn.cursor()
+        cur.execute("SELECT id, numero_registro, ocr_text, contribuinte FROM imoveis WHERE id=?", (imovel_id,))
+        row = cur.fetchone()
+        
+        if not row or not row['ocr_text']:
+            return jsonify({"status": "error", "message": "Texto OCR não encontrado para esta matrícula."}), 404
+            
+        # Delete existing
+        cur.execute("SELECT id FROM mapa_atos WHERE imovel_id=?", (imovel_id,))
+        atos = cur.fetchall()
+        for ato in atos:
+            cur.execute("DELETE FROM mapa_partes WHERE mapa_ato_id=?", (ato['id'],))
+        cur.execute("DELETE FROM mapa_atos WHERE imovel_id=?", (imovel_id,))
+        
+        now = datetime.now().isoformat()
+        acts = iago.extract_acts_mapa(row['ocr_text'])
+        
+        if acts:
+            for act in acts:
+                cur.execute("""
+                    INSERT INTO mapa_atos 
+                    (imovel_id, numero_matricula, motivo_envio, georreferenciamento, protocolo_prenotacao, 
+                    data_protocolo_prenotacao, tipo_matricula_transcricao, tipo_ato, numero_ato, ato, 
+                    alteracao_titulariedade, alteracao_imovel, valor_imposto, valor_transacao, area_m2, 
+                    created_at, updated_at, livro_matricula, folha_matricula, unidade_area)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """, (
+                    row['id'], row['numero_registro'], 1, 0, act.get('protocolo', ''), act.get('data_protocolo', ''),
+                    1, act.get('tipo_ato_cod', 1), act.get('numero_ato', 0), act.get('ato_cod', 5),
+                    act.get('alteracao_titulariedade', 0), act.get('alteracao_imovel', 0), 
+                    act.get('valor_imposto', 0.0), act.get('valor_transacao', 0.0), act.get('area', 0.0), 
+                    now, now, act.get('livro', ''), act.get('folha', ''), act.get('unidade_area', 2)
+                ))
+                ato_id = cur.lastrowid
+                for p in act.get('partes_detalhadas', []):
+                    cur.execute("""
+                        INSERT INTO mapa_partes 
+                        (mapa_ato_id, nome_completo, cpf_cnpj, estrangeiro, nacionalidade, estado_civil, regime_bens, 
+                        relacao_juridica, condicao_parte, percentual, created_at, updated_at,
+                        rnm, passaporte, genero)
+                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    """, (
+                        ato_id, p.get('nome', ''), p.get('cpf', ''), p.get('estrangeiro', 0), 
+                        76, p.get('estado_civil', 1), 
+                        p.get('regime_bens', 0), p.get('relacao_juridica', 1), p.get('condicao_parte', 1), 
+                        100.0, now, now,
+                        p.get('rnm', ''), p.get('passaporte', ''), p.get('genero', 1)
+                    ))
+        else:
+            cur.execute("""
+                INSERT INTO mapa_atos 
+                (imovel_id, numero_matricula, motivo_envio, georreferenciamento, protocolo_prenotacao, 
+                data_protocolo_prenotacao, tipo_matricula_transcricao, tipo_ato, numero_ato, ato, 
+                alteracao_titulariedade, alteracao_imovel, valor_imposto, valor_transacao, area_m2, created_at, updated_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """, (
+                row['id'], row['numero_registro'], 1, 0, "", "", 
+                1, 1, 1, 5, 0, 0, 0.0, 0.0, 0.0, now, now
+            ))
+            ato_id = cur.lastrowid
+            
+            contrib_str = row['contribuinte']
+            contrib_list = []
+            try:
+                if contrib_str:
+                    if contrib_str.startswith('['):
+                        contrib_list = json.loads(contrib_str)
+                    else:
+                        contrib_list = [contrib_str]
+            except:
+                pass
+                
+            if not contrib_list:
+                contrib_list = ["NÃO IDENTIFICADO"]
+                
+            for nome in contrib_list:
+                if not nome: continue
+                cur.execute("""
+                    INSERT INTO mapa_partes 
+                    (mapa_ato_id, nome_completo, cpf_cnpj, estrangeiro, nacionalidade, estado_civil, regime_bens, 
+                    relacao_juridica, condicao_parte, percentual, created_at, updated_at)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """, (ato_id, nome, "", 0, 76, 1, 0, 1, 1, 100.0, now, now))
+                
+        conn.commit()
+        conn.close()
+        
+        summary_details = []
+        if acts:
+            for act in acts:
+                tipo_str = "Registro" if act.get('tipo_ato_cod') == 1 else "Averbação"
+                num_ato = act.get('numero_ato', 0)
+                partes_names = [p.get('nome', 'Não identificado') for p in act.get('partes_detalhadas', [])]
+                partes_str = ", ".join(partes_names) if partes_names else "Sem partes"
+                summary_details.append(f"{tipo_str} {num_ato} ({partes_str})")
+        else:
+            contrib_names = ", ".join(contrib_list) if contrib_list else "Sem partes"
+            summary_details.append(f"Ato Geral / Outros ({contrib_names})")
+            
+        return jsonify({
+            "status": "success", 
+            "message": "Matrícula reprocessada com sucesso!",
+            "summary": summary_details
+        })
     except Exception as e:
         return jsonify({"status": "error", "message": str(e)}), 500
 
@@ -1018,8 +2247,14 @@ def row_to_indicador_item(row, tipoenvio: int) -> dict:
     }
 
 def get_conn():
-    conn = sqlite3.connect(DB_PATH)
+    conn = sqlite3.connect(DB_PATH, timeout=30)
     conn.row_factory = sqlite3.Row
+    # Ativa o modo WAL para melhor performance e concorrência
+    try:
+        conn.execute("PRAGMA journal_mode=WAL")
+        conn.execute("PRAGMA synchronous=NORMAL")
+    except:
+        pass
     return conn
 
 
@@ -1320,9 +2555,17 @@ def recuperar_senha():
 def privacidade():
     return render_template("privacidade.html")
 
+@app.route("/privacidade/v1")
+def privacidade_v1():
+    return render_template("privacidade_v1.html")
+
 @app.route("/termos")
 def termos():
     return render_template("termos.html")
+
+@app.route("/termos/v1")
+def termos_v1():
+    return render_template("termos_v1.html")
 
 @app.route("/importar", methods=["GET", "POST"])
 @login_required
@@ -1420,6 +2663,73 @@ def importar_arquivo():
 
                     nid = save_dict_to_db_web(data, tiff_path=filepath, ocr_text=txt)
                     
+                    # Automate map processing
+                    try:
+                        if txt and len(txt) >= 50:
+                            acts_mapa = iago.extract_acts_mapa(txt)
+                            now_str = datetime.now().isoformat()
+                            mapa_conn = get_conn()
+                            mapa_cur = mapa_conn.cursor()
+                            
+                            if acts_mapa:
+                                for act in acts_mapa:
+                                    mapa_cur.execute("SELECT id FROM mapa_atos WHERE imovel_id=? AND tipo_ato=? AND protocolo_prenotacao=?", 
+                                                (nid, act.get('tipo_ato_cod', 1), act.get('protocolo', '')))
+                                    if not mapa_cur.fetchone():
+                                        mapa_cur.execute("""
+                                            INSERT INTO mapa_atos 
+                                            (imovel_id, numero_matricula, motivo_envio, georreferenciamento, protocolo_prenotacao, 
+                                            data_protocolo_prenotacao, tipo_matricula_transcricao, tipo_ato, numero_ato, ato, 
+                                            alteracao_titulariedade, alteracao_imovel, valor_imposto, valor_transacao, area_m2, created_at, updated_at)
+                                            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                                        """, (
+                                            nid, matricula, 1, 0, act.get('protocolo', ''), act.get('data_protocolo', ''),
+                                            1, act.get('tipo_ato_cod', 1), act.get('numero_ato', 0), act.get('ato_cod', 5),
+                                            act.get('alteracao_titulariedade', 0), act.get('alteracao_imovel', 0), 
+                                            act.get('valor_imposto', 0.0), act.get('valor_transacao', 0.0), 0.0, now_str, now_str
+                                        ))
+                                        ato_id = mapa_cur.lastrowid
+                                        for p in act.get('partes_detalhadas', []):
+                                            mapa_cur.execute("""
+                                                INSERT INTO mapa_partes 
+                                                (mapa_ato_id, nome_completo, cpf_cnpj, estrangeiro, nacionalidade, estado_civil, regime_bens, 
+                                                relacao_juridica, condicao_parte, percentual, created_at, updated_at)
+                                                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                                            """, (
+                                                ato_id, p.get('nome', ''), p.get('cpf', ''), 0, 76, p.get('estado_civil', 1), 
+                                                p.get('regime_bens', 0), p.get('relacao_juridica', 1), p.get('condicao_parte', 1), 100.0, now_str, now_str
+                                            ))
+                            else:
+                                mapa_cur.execute("SELECT id FROM mapa_atos WHERE imovel_id=? AND tipo_ato=1", (nid,))
+                                if not mapa_cur.fetchone():
+                                    mapa_cur.execute("""
+                                        INSERT INTO mapa_atos 
+                                        (imovel_id, numero_matricula, motivo_envio, georreferenciamento, protocolo_prenotacao, 
+                                        data_protocolo_prenotacao, tipo_matricula_transcricao, tipo_ato, numero_ato, ato, 
+                                        alteracao_titulariedade, alteracao_imovel, valor_imposto, valor_transacao, area_m2, created_at, updated_at)
+                                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                                    """, (
+                                        nid, matricula, 1, 0, "", "", 
+                                        1, 1, 1, 5, 0, 0, 0.0, 0.0, 0.0, now_str, now_str
+                                    ))
+                                    ato_id = mapa_cur.lastrowid
+                                    contrib_list = data.get("CONTRIBUINTE", [])
+                                    if not contrib_list:
+                                        contrib_list = ["NÃO IDENTIFICADO"]
+                                    for nome in contrib_list:
+                                        if not nome: continue
+                                        mapa_cur.execute("""
+                                            INSERT INTO mapa_partes 
+                                            (mapa_ato_id, nome_completo, cpf_cnpj, estrangeiro, nacionalidade, estado_civil, regime_bens, 
+                                            relacao_juridica, condicao_parte, percentual, created_at, updated_at)
+                                            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                                        """, (ato_id, nome, "", 0, 76, 1, 0, 1, 1, 100.0, now_str, now_str))
+                            
+                            mapa_conn.commit()
+                            mapa_conn.close()
+                    except Exception as e:
+                        print(f"Erro ao processar mapa auto: {e}")
+
                     logger.info(f"Importação: {current_user.username} importou arquivo '{filename}' (Matrícula: {matricula})")
                     res['success'] = True
                     res['matricula'] = matricula
@@ -1533,21 +2843,301 @@ def dashboard():
     conn = get_conn()
     cur = conn.cursor()
     
-    # Stats
+    # Stats Gerais (Matrículas no Sistema)
     cur.execute("SELECT COUNT(*) FROM imoveis")
-    total = cur.fetchone()[0]
-    
+    total_geral = cur.fetchone()[0]
     cur.execute("SELECT COUNT(*) FROM imoveis WHERE status_trabalho='CONCLUIDO'")
-    concluidos = cur.fetchone()[0]
+    concluidos_geral = cur.fetchone()[0]
     
-    pendentes = total - concluidos
+    # Stats MAPA (ONR)
+    cur.execute("SELECT COUNT(*) FROM mapa_atos")
+    total_atos = cur.fetchone()[0]
+    cur.execute("SELECT COUNT(DISTINCT imovel_id) FROM mapa_atos")
+    total_imoveis_mapa = cur.fetchone()[0]
+    cur.execute("SELECT COUNT(*) FROM mapa_atos WHERE status_trabalho='CONCLUIDO'")
+    concluidos_mapa = cur.fetchone()[0]
     
-    # Desempenho (simulado por logs de edição, mais complexo, vamos simplificar para total por usuario)
-    # Como não temos log de quem fez o que persistente além do lock, vamos deixar placeholder.
+    # Stats Indicador Pessoal
+    cur.execute("SELECT COUNT(*) FROM indicador_pessoal")
+    total_indicadores = cur.fetchone()[0]
+    
+    # Produtividade por Colaborador
+    # Vamos unir quem concluiu imoveis e quem concluiu atos no mapa
+    cur.execute("""
+        SELECT concluded_by as usuario, COUNT(*) as total 
+        FROM mapa_atos 
+        WHERE status_trabalho='CONCLUIDO' AND concluded_by IS NOT NULL 
+        GROUP BY concluded_by 
+        ORDER BY total DESC
+    """)
+    prod_mapa = cur.fetchall()
+    
+    cur.execute("""
+        SELECT concluded_by as usuario, COUNT(*) as total 
+        FROM imoveis 
+        WHERE status_trabalho='CONCLUIDO' AND concluded_by IS NOT NULL 
+        GROUP BY concluded_by 
+        ORDER BY total DESC
+    """)
+    prod_geral = cur.fetchall()
+    
+    # Consolidar produtividade
+    colaboradores = {}
+    for row in prod_geral:
+        colaboradores[row['usuario']] = {'geral': row['total'], 'mapa': 0}
+    for row in prod_mapa:
+        if row['usuario'] in colaboradores:
+            colaboradores[row['usuario']]['mapa'] = row['total']
+        else:
+            colaboradores[row['usuario']] = {'geral': 0, 'mapa': row['total']}
+            
+    # Atividade Recente (Últimos atos editados)
+    cur.execute("""
+        SELECT m.numero_matricula, m.updated_at, m.concluded_by 
+        FROM mapa_atos m 
+        WHERE m.status_trabalho='CONCLUIDO' 
+        ORDER BY m.updated_at DESC LIMIT 5
+    """)
+    recente = cur.fetchall()
     
     conn.close()
     
-    return render_template("dashboard.html", total=total, concluidos=concluidos, pendentes=pendentes)
+    return render_template("dashboard.html", 
+                           total=total_geral, 
+                           concluidos=concluidos_geral, 
+                           total_atos=total_atos,
+                           total_imoveis_mapa=total_imoveis_mapa,
+                           concluidos_mapa=concluidos_mapa,
+                           total_indicadores=total_indicadores,
+                           colaboradores=colaboradores,
+                           recente=recente,
+                           now=datetime.now())
+
+@app.route("/dashboard/pdf")
+@login_required
+def dashboard_pdf():
+    from fpdf import FPDF
+    from fpdf.enums import XPos, YPos
+    
+    conn = get_conn()
+    cur = conn.cursor()
+    
+    # Coletar todos os dados novamente para o PDF
+    cur.execute("SELECT COUNT(*) FROM imoveis")
+    t_geral = cur.fetchone()[0]
+    cur.execute("SELECT COUNT(*) FROM imoveis WHERE status_trabalho='CONCLUIDO'")
+    c_geral = cur.fetchone()[0]
+    cur.execute("SELECT COUNT(*) FROM mapa_atos")
+    t_atos = cur.fetchone()[0]
+    cur.execute("SELECT COUNT(*) FROM mapa_atos WHERE status_trabalho='CONCLUIDO'")
+    c_atos = cur.fetchone()[0]
+    cur.execute("SELECT COUNT(*) FROM indicador_pessoal")
+    t_ind = cur.fetchone()[0]
+    
+    # Produtividade por Colaborador (Geral e Mapa)
+    cur.execute("""
+        SELECT concluded_by as usuario, COUNT(*) as total 
+        FROM imoveis 
+        WHERE status_trabalho='CONCLUIDO' AND concluded_by IS NOT NULL 
+        GROUP BY concluded_by
+    """)
+    prod_geral = cur.fetchall()
+    
+    cur.execute("""
+        SELECT concluded_by as usuario, COUNT(*) as total 
+        FROM mapa_atos 
+        WHERE status_trabalho='CONCLUIDO' AND concluded_by IS NOT NULL 
+        GROUP BY concluded_by
+    """)
+    prod_mapa = cur.fetchall()
+    
+    # Cartório name for Header
+    cur.execute("SELECT value FROM system_config WHERE key='cartorio_name'")
+    row_cartorio = cur.fetchone()
+    cartorio_name = row_cartorio[0] if row_cartorio and row_cartorio[0] else "SISTEMA INDICADOR REAL"
+    
+    conn.close()
+    
+    # Consolidar produtividade
+    colaboradores = {}
+    for r in prod_geral:
+        colaboradores[r['usuario']] = {'geral': r['total'], 'mapa': 0}
+    for r in prod_mapa:
+        if r['usuario'] in colaboradores:
+            colaboradores[r['usuario']]['mapa'] = r['total']
+        else:
+            colaboradores[r['usuario']] = {'geral': 0, 'mapa': r['total']}
+            
+    # Class for Custom PDF with header and footer
+    class PDFRelatorio(FPDF):
+        def __init__(self, cartorio, *args, **kwargs):
+            super().__init__(*args, **kwargs)
+            self.cartorio = cartorio.upper()
+            
+        def header(self):
+            # Top color band
+            self.set_fill_color(30, 60, 114)  # #1e3c72
+            self.rect(0, 0, 210, 14, 'F')
+            
+            # Title inside color band
+            self.set_text_color(255, 255, 255)
+            self.set_font("Helvetica", 'B', 9)
+            self.set_xy(10, 3)
+            self.cell(190, 8, self.cartorio, align='L')
+            
+            # Report title
+            self.set_text_color(45, 55, 72)
+            self.set_xy(10, 18)
+            self.set_font("Helvetica", 'B', 15)
+            self.cell(190, 8, "RELATÓRIO DE DESEMPENHO E PRODUTIVIDADE", align='L')
+            
+            # Subtitle
+            self.set_font("Helvetica", '', 9)
+            self.set_text_color(113, 128, 150)
+            self.set_xy(10, 25)
+            self.cell(190, 5, f"Gerado em: {datetime.now().strftime('%d/%m/%Y %H:%M')}", align='L')
+            
+            # Divider Line
+            self.set_draw_color(226, 232, 240)
+            self.set_line_width(0.5)
+            self.line(10, 31, 200, 31)
+            
+        def footer(self):
+            self.set_y(-15)
+            # Divider line
+            self.set_draw_color(226, 232, 240)
+            self.set_line_width(0.5)
+            self.line(10, 282, 200, 282)
+            
+            self.set_font("Helvetica", 'I', 8)
+            self.set_text_color(113, 128, 150)
+            self.cell(95, 10, "Sistema Indicador Real - Relatório de Auditoria", align='L')
+            self.cell(95, 10, f"Página {self.page_no()}/{{nb}}", align='R')
+            
+    pdf = PDFRelatorio(cartorio_name)
+    pdf.alias_nb_pages()
+    pdf.add_page()
+    
+    # 1. KPI Cards Row 1
+    # Card 1: Matrículas no Acervo
+    pdf.set_fill_color(239, 246, 255) # light blue
+    pdf.set_draw_color(191, 219, 254)
+    pdf.rect(10, 36, 92, 22, 'FD')
+    
+    pdf.set_xy(14, 39)
+    pdf.set_font("Helvetica", 'B', 8)
+    pdf.set_text_color(30, 64, 175)
+    pdf.cell(84, 4, "MATRÍCULAS NO ACERVO", new_x=XPos.LMARGIN, new_y=YPos.NEXT)
+    pdf.set_x(14)
+    pdf.set_font("Helvetica", 'B', 16)
+    pdf.set_text_color(30, 58, 138)
+    pdf.cell(84, 8, str(t_geral), new_x=XPos.LMARGIN, new_y=YPos.NEXT)
+    
+    # Card 2: Matrículas Validadas
+    pdf.set_fill_color(240, 253, 250) # light emerald
+    pdf.set_draw_color(186, 230, 218)
+    pdf.rect(108, 36, 92, 22, 'FD')
+    
+    pdf.set_xy(112, 39)
+    pdf.set_font("Helvetica", 'B', 8)
+    pdf.set_text_color(6, 95, 70)
+    pdf.cell(84, 4, "MATRÍCULAS VALIDADAS", new_x=XPos.LMARGIN, new_y=YPos.NEXT)
+    pdf.set_x(112)
+    pdf.set_font("Helvetica", 'B', 16)
+    pdf.set_text_color(4, 120, 87)
+    pdf.cell(84, 8, str(c_geral), new_x=XPos.LMARGIN, new_y=YPos.NEXT)
+    
+    # 2. KPI Cards Row 2
+    # Card 3: Indicador Pessoal
+    pdf.set_fill_color(255, 251, 235) # light amber
+    pdf.set_draw_color(253, 230, 138)
+    pdf.rect(10, 62, 92, 22, 'FD')
+    
+    pdf.set_xy(14, 65)
+    pdf.set_font("Helvetica", 'B', 8)
+    pdf.set_text_color(146, 64, 14)
+    pdf.cell(84, 4, "INDICADOR PESSOAL (PESSOAS)", new_x=XPos.LMARGIN, new_y=YPos.NEXT)
+    pdf.set_x(14)
+    pdf.set_font("Helvetica", 'B', 16)
+    pdf.set_text_color(180, 83, 9)
+    pdf.cell(84, 8, str(t_ind), new_x=XPos.LMARGIN, new_y=YPos.NEXT)
+    
+    # Card 4: Atos no Mapa
+    pdf.set_fill_color(250, 245, 255) # light purple
+    pdf.set_draw_color(233, 216, 253)
+    pdf.rect(108, 62, 92, 22, 'FD')
+    
+    pdf.set_xy(112, 65)
+    pdf.set_font("Helvetica", 'B', 8)
+    pdf.set_text_color(107, 33, 168)
+    pdf.cell(84, 4, "ATOS ESTRUTURADOS (MAPA/ONR)", new_x=XPos.LMARGIN, new_y=YPos.NEXT)
+    pdf.set_x(112)
+    pdf.set_font("Helvetica", 'B', 16)
+    pdf.set_text_color(91, 33, 182)
+    pdf.cell(84, 8, str(t_atos), new_x=XPos.LMARGIN, new_y=YPos.NEXT)
+    
+    # 3. Section: Conformidade ONR
+    pdf.set_xy(10, 90)
+    pdf.set_font("Helvetica", 'B', 11)
+    pdf.set_text_color(45, 55, 72)
+    pdf.cell(190, 6, "Conformidade ONR (Diretrizes ITN 03/2025)", new_x=XPos.LMARGIN, new_y=YPos.NEXT)
+    
+    perc_mapa = round((c_atos / t_atos * 100), 1) if t_atos > 0 else 0.0
+    
+    pdf.set_font("Helvetica", '', 9.5)
+    pdf.set_text_color(74, 85, 104)
+    pdf.cell(190, 5, f"Atos estruturados validados e prontos para envio: {c_atos} de {t_atos} ({perc_mapa}%)", new_x=XPos.LMARGIN, new_y=YPos.NEXT)
+    
+    # Progress Bar
+    pdf.set_fill_color(241, 245, 249)
+    pdf.rect(10, 103, 190, 5, 'F')
+    if perc_mapa > 0:
+        pdf.set_fill_color(16, 185, 129) # Emerald success color
+        pdf.rect(10, 103, int(190 * (perc_mapa / 100.0)), 5, 'F')
+        
+    # 4. Section: Produtividade
+    pdf.set_xy(10, 115)
+    pdf.set_font("Helvetica", 'B', 11)
+    pdf.set_text_color(45, 55, 72)
+    pdf.cell(190, 6, "Produtividade Consolidada por Colaborador", new_x=XPos.LMARGIN, new_y=YPos.NEXT)
+    pdf.ln(2)
+    
+    # Table Header
+    pdf.set_fill_color(30, 60, 114) # #1e3c72
+    pdf.set_text_color(255, 255, 255)
+    pdf.set_draw_color(226, 232, 240)
+    pdf.set_line_width(0.3)
+    pdf.set_font("Helvetica", 'B', 9)
+    
+    pdf.cell(75, 8, "  Colaborador", border=1, fill=True)
+    pdf.cell(40, 8, "Matrículas Validadas", border=1, fill=True, align='C')
+    pdf.cell(40, 8, "Atos no Mapa (ONR)", border=1, fill=True, align='C')
+    pdf.cell(35, 8, "Ações Totais", border=1, fill=True, align='C', new_x=XPos.LMARGIN, new_y=YPos.NEXT)
+    
+    # Table Body
+    pdf.set_text_color(74, 85, 104)
+    pdf.set_font("Helvetica", '', 9)
+    
+    bg_alt = False
+    for user, stats in colaboradores.items():
+        if bg_alt:
+            pdf.set_fill_color(248, 250, 252) # Soft grey/blue
+        else:
+            pdf.set_fill_color(255, 255, 255)
+            
+        tot_acoes = stats['geral'] + stats['mapa']
+        
+        pdf.cell(75, 8, f"  {user}", border=1, fill=True)
+        pdf.cell(40, 8, str(stats['geral']), border=1, fill=True, align='C')
+        pdf.cell(40, 8, str(stats['mapa']), border=1, fill=True, align='C')
+        pdf.cell(35, 8, str(tot_acoes), border=1, fill=True, align='C', new_x=XPos.LMARGIN, new_y=YPos.NEXT)
+        bg_alt = not bg_alt
+        
+    pdf_bytes = pdf.output()
+    response = Response(bytes(pdf_bytes))
+    response.headers.set('Content-Disposition', 'attachment', filename=f'relatorio_dashboard_{datetime.now().strftime("%Y%m%d")}.pdf')
+    response.headers.set('Content-Type', 'application/pdf')
+    return response
 
 @app.route("/configuracao/email", methods=["GET", "POST"])
 @login_required
@@ -2903,7 +4493,7 @@ def baixar_json():
     rows = cur.fetchall()
     
     # Record current time for next incremental export
-    now_iso = datetime.now(timezone.utc).replace(tzinfo=None).isoformat()
+    now_iso = (datetime.now(timezone.utc).replace(tzinfo=None) - timedelta(hours=4)).isoformat()
     
     # Update Config
     cur.execute("INSERT OR REPLACE INTO system_config (key, value) VALUES ('last_json_export', ?)", (now_iso,))
@@ -3048,13 +4638,50 @@ def baixar_ultimo_json():
         as_attachment=True, 
         download_name=filename_json
     )
+@app.route("/chat_iago")
+@login_required
+def chat_iago():
+    return render_template("chat_iago.html")
+
+@app.route("/api/chat", methods=["POST"])
+@login_required
+def api_chat():
+    import iago
+    data = request.get_json()
+    if not data:
+        return jsonify({"error": "Nenhum dado enviado"}), 400
+    msg = data.get("message", "")
+    history = data.get("history", [])
+    if not msg:
+        return jsonify({"error": "Mensagem vazia"}), 400
+        
+    try:
+        reply = iago.chat_with_db(msg, history)
+        return jsonify({"reply": reply})
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        return jsonify({"error": str(e)}), 500
 
 if __name__ == "__main__":
+    # Garante que o serviço da rede neural (Ollama) seja iniciado se estiver habilitado no .env
+    try:
+        import iago
+        iago.ensure_ollama_running()
+    except Exception as e:
+        print(f"[ERROR] Falha ao iniciar ou verificar a Rede Neural (Ollama): {e}")
+
     init_db()
     init_lock_table()
     
     # Obtém IP local para facilitar acesso na rede
     import socket
+    proto = "http"
+    ssl_ctx = None
+    if os.path.exists('cert.pem') and os.path.exists('key.pem'):
+        ssl_ctx = ('cert.pem', 'key.pem')
+        proto = "https"
+        
     try:
         s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
         s.connect(("8.8.8.8", 80))
@@ -3062,10 +4689,13 @@ if __name__ == "__main__":
         s.close()
         print(f"\n{'='*40}")
         print(f" Servidor rodando!")
-        print(f" Acesse via: http://{ip_addr}:5000")
+        print(f" Acesse via: {proto}://{ip_addr}:5000")
         print(f"{'='*40}\n")
     except Exception:
-        print("Não foi possível detectar IP rede local. Acesse via localhost.")
+        print(f"Não foi possível detectar IP rede local. Acesse via localhost ({proto}).")
 
-    app.run(host="0.0.0.0", port=5000, debug=False)
+    if ssl_ctx:
+        app.run(host="0.0.0.0", port=5000, debug=False, ssl_context=ssl_ctx)
+    else:
+        app.run(host="0.0.0.0", port=5000, debug=False)
 

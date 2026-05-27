@@ -2,20 +2,93 @@
 
 {% block conteudo %}
 <style>
+    @import url('https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&display=swap');
+
+    .font-outfit {
+        font-family: 'Outfit', sans-serif;
+    }
+
+    /* --- MODERN PREMIUM STYLES --- */
+    .glass-card-pessoal {
+        background: rgba(255, 255, 255, 0.85);
+        backdrop-filter: blur(15px);
+        -webkit-backdrop-filter: blur(15px);
+        border: 1px solid rgba(226, 232, 240, 0.8) !important;
+        border-radius: 20px !important;
+        box-shadow: 0 8px 30px rgba(0, 0, 0, 0.03) !important;
+        transition: all 0.3s ease;
+    }
+
+    .glass-card-pessoal:hover {
+        box-shadow: 0 12px 40px rgba(0, 0, 0, 0.06) !important;
+    }
+
+    /* Table Premium Custom */
+    .table-premium {
+        width: 100%;
+        margin-bottom: 0;
+    }
+    
+    .table-premium th {
+        font-weight: 600;
+        color: #4a5568;
+        background-color: #f8fafc !important;
+        border-bottom: 2px solid #edf2f7 !important;
+        padding: 1rem 0.75rem !important;
+    }
+    
+    .table-premium td {
+        padding: 1.1rem 0.75rem !important;
+        vertical-align: middle;
+        border-bottom: 1px solid #edf2f7;
+    }
+
+    .table-premium tbody tr {
+        transition: all 0.2s ease;
+    }
+    
+    .table-premium tbody tr:hover {
+        background-color: rgba(37, 99, 235, 0.02) !important;
+    }
+
+    /* Custom Input and Buttons */
+    .form-control-premium {
+        border-radius: 12px !important;
+        padding: 0.75rem 1rem !important;
+        border: 1px solid #cbd5e1 !important;
+        transition: all 0.2s ease;
+    }
+
+    .form-control-premium:focus {
+        border-color: #3b82f6 !important;
+        box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.15) !important;
+    }
+
+    .btn-premium-action {
+        border-radius: 12px !important;
+        padding: 0.75rem 1.25rem !important;
+        font-weight: 500;
+        transition: all 0.2s ease;
+    }
+    
+    .btn-premium-action:hover {
+        transform: translateY(-2px);
+    }
+
     /* --- MODERN TIMELINE CSS --- */
     .timeline-container {
         position: relative;
         width: 100%;
-        height: 450px;
+        height: 430px;
         overflow-x: auto;
         overflow-y: hidden;
         white-space: nowrap;
         padding: 0 50px;
         display: flex;
         align-items: center;
-        background: #f8f9fa;
-        /* Slight grey background for contrast */
-        border-radius: 8px;
+        background: #f8fafc;
+        border-radius: 16px;
+        border: 1px solid #edf2f7;
     }
 
     /* Main Central Line */
@@ -24,9 +97,8 @@
         top: 50%;
         left: 0;
         width: 100%;
-        /* Will grow with content due to scrollWidth */
         height: 4px;
-        background: linear-gradient(90deg, #0dcaf0, #0d6efd, #6610f2, #d63384);
+        background: linear-gradient(90deg, #2563eb, #8b5cf6, #ec4899);
         transform: translateY(-50%);
         z-index: 1;
         min-width: 100%;
@@ -36,10 +108,8 @@
     .timeline-item {
         position: relative;
         display: inline-block;
-        width: 240px;
-        /* Fixed width per item */
+        width: 250px;
         height: 100%;
-        /* Spans full height of container */
         vertical-align: top;
         margin: 0;
         flex-shrink: 0;
@@ -47,20 +117,24 @@
     }
 
     /* Colors classes for dynamic assignment */
-    .theme-cyan {
-        --theme-color: #0dcaf0;
-    }
-
     .theme-blue {
-        --theme-color: #0d6efd;
+        --theme-color: #2563eb;
+        --theme-bg-light: #eff6ff;
     }
 
     .theme-purple {
-        --theme-color: #6610f2;
+        --theme-color: #8b5cf6;
+        --theme-bg-light: #f5f3ff;
     }
 
     .theme-pink {
-        --theme-color: #d63384;
+        --theme-color: #ec4899;
+        --theme-bg-light: #fdf2f8;
+    }
+
+    .theme-emerald {
+        --theme-color: #10b981;
+        --theme-bg-light: #ecfdf5;
     }
 
     /* CONTENT BOX */
@@ -69,150 +143,137 @@
         width: 100%;
         text-align: center;
         padding: 0 15px;
-        transition: transform 0.3s ease;
+        transition: transform 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
         cursor: pointer;
     }
 
     .timeline-content:hover {
-        transform: scale(1.02);
+        transform: scale(1.05);
     }
 
-    /* POSITIONING logic */
     /* TOP ITEM */
     .timeline-item.top .timeline-content {
         bottom: 50%;
         padding-bottom: 50px;
-        /* Space for the vertical stick */
     }
 
     /* BOTTOM ITEM */
     .timeline-item.bottom .timeline-content {
         top: 50%;
         padding-top: 50px;
-        /* Space for the vertical stick */
     }
 
-    /* The Vertical Stick */
+    /* Vertical Stick */
     .timeline-content::before {
         content: '';
         position: absolute;
         left: 50%;
         width: 2px;
         height: 50px;
-        /* Fixed length of stick */
-        background-color: var(--theme-color, #6c757d);
+        background-color: var(--theme-color, #64748b);
         transform: translateX(-50%);
     }
 
-    /* Position stick for TOP */
     .timeline-item.top .timeline-content::before {
         bottom: 0;
     }
 
-    /* Position stick for BOTTOM */
     .timeline-item.bottom .timeline-content::before {
         top: 0;
     }
 
-    /* The Dot at the end of the stick (near text) */
+    /* Dot at the end of the stick */
     .timeline-content::after {
         content: '';
         position: absolute;
         left: 50%;
         width: 12px;
         height: 12px;
-        background-color: var(--theme-color, #6c757d);
+        background-color: var(--theme-color, #64748b);
         border-radius: 50%;
         transform: translateX(-50%);
         border: 2px solid #fff;
-        box-shadow: 0 0 0 2px var(--theme-color, #6c757d);
+        box-shadow: 0 0 0 2px var(--theme-color, #64748b);
     }
 
-    /* Dot position TOP */
     .timeline-item.top .timeline-content::after {
         bottom: 50px;
-        /* At the top of the stick */
         margin-bottom: -6px;
-        /* center on line end */
     }
 
-    /* Dot position BOTTOM */
     .timeline-item.bottom .timeline-content::after {
         top: 50px;
-        /* At the bottom of the stick */
         margin-top: -6px;
     }
 
-
-    /* The Central Dot (on the main line) */
+    /* Central Dot on the main line */
     .timeline-main-dot {
         position: absolute;
         top: 50%;
         left: 50%;
-        width: 16px;
-        height: 16px;
+        width: 18px;
+        height: 18px;
         background: #fff;
-        border: 4px solid var(--theme-color, #6c757d);
+        border: 4px solid var(--theme-color, #64748b);
         border-radius: 50%;
         transform: translate(-50%, -50%);
         z-index: 10;
-        box-shadow: 0 0 5px rgba(0, 0, 0, 0.1);
+        box-shadow: 0 2px 5px rgba(0, 0, 0, 0.1);
+        cursor: pointer;
+        transition: all 0.2s ease;
+    }
+
+    .timeline-main-dot:hover {
+        transform: translate(-50%, -50%) scale(1.3);
+        background: var(--theme-color);
     }
 
     /* TEXT STYLES */
     .timeline-year {
-        font-size: 1.5rem;
-        font-weight: 800;
-        color: var(--theme-color, #6c757d);
+        font-family: 'Outfit', sans-serif;
+        font-size: 1.6rem;
+        font-weight: 700;
+        color: var(--theme-color, #64748b);
         margin-bottom: 5px;
         line-height: 1;
     }
 
     .timeline-text {
-        font-size: 0.9rem;
-        color: #495057;
+        font-size: 0.85rem;
+        color: #1e293b;
         background: #fff;
-        padding: 10px;
-        border-radius: 8px;
-        box-shadow: 0 2px 8px rgba(0, 0, 0, 0.05);
+        padding: 12px;
+        border-radius: 12px;
+        box-shadow: 0 4px 15px rgba(0, 0, 0, 0.05);
         display: inline-block;
         max-width: 100%;
-        border-top: 3px solid var(--theme-color, #6c757d);
+        border-top: 4px solid var(--theme-color, #64748b);
+        white-space: normal;
+        text-align: left;
     }
 
-    /* Arrange order for Bottom items (Stick is above text) */
-    /* For CSS pseudo elements, they stay put. We just need to ensure margin is right */
-
-    .border-l-primary {
-        border-left: 4px solid #0d6efd;
-    }
-
-    .border-l-success {
-        border-left: 4px solid #198754;
-    }
-
-    .border-l-warning {
-        border-left: 4px solid #ffc107;
-    }
-
-    .card-hover:hover {
-        transform: translateY(-2px);
-        box-shadow: 0 .5rem 1rem rgba(0, 0, 0, .15) !important;
-        transition: all .2s;
+    .badge-timeline {
+        background-color: var(--theme-bg-light, #f1f5f9);
+        color: var(--theme-color, #475569);
+        font-weight: 600;
+        border: 1px solid rgba(0,0,0,0.03);
     }
 </style>
 
-<div class="d-flex justify-content-between align-items-center mb-4">
+<div id="globalHeader" class="d-flex flex-column flex-md-row justify-content-between align-items-md-center gap-3 mb-4 animate-fade-in">
     <div>
-        <h2 class="fw-bold text-primary mb-0">Indicador Pessoal</h2>
-        <p class="text-muted small mb-0">Histórico de atos e proprietários</p>
+        <h2 class="fw-bold text-dark mb-1 font-outfit">Indicador Pessoal</h2>
+        <p class="text-muted small mb-0">Histórico de atos, proprietários, adquirentes e transmitentes</p>
     </div>
-    <div class="btn-group">
-        <button class="btn btn-outline-success" data-bs-toggle="modal" data-bs-target="#importModal">
+    <div class="d-flex align-items-center gap-2">
+        <a href="/indicador_pessoal/modelo_excel" class="btn btn-outline-secondary d-flex align-items-center gap-1.5" style="border-radius: 12px; font-weight: 500; font-size: 0.9rem;">
+            <i class="bi bi-download"></i> Baixar Modelo
+        </a>
+        <button class="btn btn-outline-success d-flex align-items-center gap-1.5" data-bs-toggle="modal" data-bs-target="#importModal" style="border-radius: 12px; font-weight: 500; font-size: 0.9rem;">
             <i class="bi bi-file-earmark-excel"></i> Importar Excel
         </button>
-        <button class="btn btn-outline-info" onclick="extractFromAcervo()">
-            <i class="bi bi-magic"></i> Extrair do Acervo
+        <button class="btn btn-primary d-flex align-items-center gap-1.5 shadow-sm" onclick="extractFromAcervo()" style="border-radius: 12px; font-weight: 500; font-size: 0.9rem;">
+            <i class="bi bi-magic"></i> Extrair do Acervo (IAGO)
         </button>
     </div>
 </div>
@@ -220,25 +281,34 @@
 <!-- ======================= -->
 <!-- LIST VIEW (SUMMARY)     -->
 <!-- ======================= -->
-<div id="listView">
-    <div class="card shadow-sm mb-4">
-        <div class="card-body">
-            <div class="input-group mb-3">
-                <span class="input-group-text"><i class="bi bi-search"></i></span>
-                <input type="text" class="form-control" id="searchSummary"
-                    placeholder="Buscar por Matrícula, Nome ou CPF..." onkeyup="if(event.key==='Enter') loadSummary()">
-                <button class="btn btn-primary" onclick="loadSummary()">Filtrar</button>
+<div id="listView" class="animate-fade-in">
+    <div class="card glass-card-pessoal mb-4">
+        <div class="card-body p-4">
+            <div class="d-flex flex-column flex-md-row gap-3 mb-4">
+                <div class="input-group flex-grow-1">
+                    <span class="input-group-text bg-white border-end-0 text-muted" style="border-radius: 12px 0 0 12px;"><i class="bi bi-search"></i></span>
+                    <input type="text" class="form-control border-start-0 ps-0 form-control-premium" id="searchSummary"
+                        placeholder="Buscar por Matrícula, Nome ou CPF/CNPJ..." onkeyup="if(event.key==='Enter') loadSummary()" style="border-radius: 0 12px 12px 0;">
+                </div>
+                <div class="d-flex gap-2">
+                    <button class="btn btn-primary px-4 d-flex align-items-center gap-1.5 btn-premium-action" onclick="loadSummary()">
+                        <i class="bi bi-funnel"></i> Filtrar
+                    </button>
+                    <button class="btn btn-outline-primary px-3 d-flex align-items-center gap-1.5 btn-premium-action" onclick="exportSummaryExcel()" title="Exportar resultado filtrado para Excel">
+                        <i class="bi bi-file-excel-fill"></i> Exportar Excel
+                    </button>
+                </div>
             </div>
 
-            <div class="table-responsive">
-                <table class="table table-hover align-middle">
-                    <thead class="table-light">
+            <div class="table-responsive" style="border-radius: 12px; overflow: hidden; border: 1px solid #edf2f7;">
+                <table class="table table-hover table-premium align-middle mb-0">
+                    <thead>
                         <tr>
-                            <th>Matrícula</th>
+                            <th class="ps-4">Matrícula</th>
                             <th>Proprietário / Parte (Exemplo)</th>
                             <th class="text-center">Qtd. Atos</th>
-                            <th class="text-center">Último Ato</th>
-                            <th class="text-end">Ações</th>
+                            <th class="text-center">Última Atualização</th>
+                            <th class="text-end pe-4">Ações</th>
                         </tr>
                     </thead>
                     <tbody id="summaryTableBody">
@@ -256,36 +326,36 @@
 <!-- ======================= -->
 <!-- DETAIL VIEW (TIMELINE)  -->
 <!-- ======================= -->
-<div id="detailView" style="display: none;">
-
-    <!-- Header: Layout matching Editar Matrículas -->
-    <div class="d-flex justify-content-between align-items-center mb-3">
-        <div>
-            <button class="btn btn-outline-secondary me-2" onclick="backToList()">
-                <i class="bi bi-arrow-left"></i> Voltar
+<div id="detailView" style="display: none;" class="animate-fade-in">
+    <div class="d-flex flex-column flex-md-row justify-content-between align-items-md-center gap-3 mb-4">
+        <div class="d-flex align-items-center gap-2">
+            <button class="btn btn-outline-secondary d-flex align-items-center gap-1.5" onclick="backToList()" style="border-radius: 12px; font-weight: 500;">
+                <i class="bi bi-arrow-left"></i> Voltar para Lista
             </button>
-            <span class="h4 fw-bold align-middle">Matrícula <span id="detailMatricula"
-                    class="text-primary"></span></span>
+            <span class="h3 fw-bold mb-0 font-outfit ms-2">Matrícula <span id="detailMatricula" class="text-primary font-outfit"></span></span>
         </div>
-        <div>
-            <!-- Image Button (Hidden initially) -->
-            <button id="btnVerImagem" class="btn btn-info text-white me-2 d-none" onclick="openImagePopup()">
-                <i class="bi bi-file-image"></i> Ver Imagem
+        <div class="d-flex align-items-center gap-2">
+            <button id="btnExtrairUnica" class="btn btn-warning text-dark d-flex align-items-center gap-1.5 shadow-sm" onclick="extractSingleMatricula()" style="border-radius: 12px; font-weight: 500;">
+                <i class="bi bi-magic"></i> Extrair com IAGO
             </button>
-            <button class="btn btn-primary ms-2" onclick="openModalNew()">
-                <i class="bi bi-plus-lg"></i> Novo Registro
+            <button id="btnVerImagem" class="btn btn-info text-white d-flex align-items-center gap-1.5 d-none shadow-sm" onclick="openImagePopup()" style="border-radius: 12px; font-weight: 500;">
+                <i class="bi bi-file-image"></i> Ver Matrícula Digital
+            </button>
+            <button class="btn btn-outline-danger d-flex align-items-center gap-1.5 shadow-sm" onclick="exportMatriculaPDF()" style="border-radius: 12px; font-weight: 500;">
+                <i class="bi bi-file-pdf-fill"></i> Exportar PDF
+            </button>
+            <button class="btn btn-primary d-flex align-items-center gap-1.5 shadow-sm" onclick="openModalNew()" style="border-radius: 12px; font-weight: 500;">
+                <i class="bi bi-plus-lg"></i> Novo
             </button>
         </div>
     </div>
 
-    <!-- Property Details (From imoveis table) - REMOVED AS REQUESTED -->
-    <div id="propertyDetailsSection" class="d-none"></div>
-
-    <div id="propertyNotFoundMsg" class="d-none"></div>
-
-    <!-- Timeline Area -->
-    <div class="card shadow-sm mb-4">
-        <div class="card-body bg-light position-relative" style="overflow-x: auto;">
+    <!-- Timeline Area Card -->
+    <div class="card glass-card-pessoal mb-4">
+        <div class="card-header bg-transparent border-0 pt-4 px-4 pb-0">
+            <h5 class="fw-bold text-dark font-outfit mb-0"><i class="bi bi-clock-history text-primary me-2"></i>Linha do Tempo de Transmissões</h5>
+        </div>
+        <div class="card-body p-4">
             <div id="timelineArea" class="timeline-container">
                 <!-- Timeline rendered here -->
             </div>
@@ -293,20 +363,23 @@
     </div>
 
     <!-- Full History Table -->
-    <div class="card shadow-sm">
-        <div class="card-header bg-white fw-bold">Histórico de Registros</div>
+    <div class="card glass-card-pessoal">
+        <div class="card-header bg-transparent border-bottom py-3 px-4 d-flex justify-content-between align-items-center">
+            <h5 class="fw-bold text-dark font-outfit mb-0"><i class="bi bi-journal-text text-primary me-2"></i>Relação Completa de Registros</h5>
+            <span class="badge bg-light text-dark border px-3 py-1.5" style="border-radius: 8px;">Dados Estruturados</span>
+        </div>
         <div class="card-body p-0">
             <div class="table-responsive">
-                <table class="table table-striped mb-0">
-                    <thead class="table-light">
+                <table class="table table-hover table-premium align-middle mb-0">
+                    <thead>
                         <tr>
-                            <th>Data Reg.</th>
-                            <th>Matrícula</th>
-                            <th>Nome (Parte)</th>
-                            <th>CPF/CNPJ</th>
+                            <th class="ps-4">Data Reg/Av</th>
                             <th>Ato</th>
-                            <th>Data Venda</th>
-                            <th class="text-end">Ações</th>
+                            <th>Nome (Parte Envolvida)</th>
+                            <th>CPF / CNPJ</th>
+                            <th class="text-center">Data Venda</th>
+                            <th>Observação</th>
+                            <th class="text-end pe-4">Ações</th>
                         </tr>
                     </thead>
                     <tbody id="pessoalTableBody">
@@ -324,76 +397,75 @@
 
 <!-- Edit/Create Modal -->
 <div class="modal fade" id="recordModal" tabindex="-1" data-bs-backdrop="false" style="pointer-events: none;">
-    <div class="modal-dialog modal-lg" style="pointer-events: auto;">
-        <div class="modal-content">
-            <div class="modal-header bg-primary text-white">
-                <h5 class="modal-title" id="modalTitle">Novo Registro</h5>
+    <div class="modal-dialog modal-dialog-centered modal-lg" style="pointer-events: auto;">
+        <div class="modal-content shadow-lg" style="border-radius: 20px; border: none; overflow: hidden;">
+            <div class="modal-header bg-primary text-white p-4">
+                <h5 class="modal-title fw-bold font-outfit" id="modalTitle">Novo Registro</h5>
                 <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
             </div>
-            <div class="modal-body">
+            <div class="modal-body p-4">
                 <form id="recordForm">
                     <input type="hidden" id="recordId">
                     <div class="row">
                         <div class="col-md-3 mb-3">
-                            <label class="form-label">Matrícula</label>
-                            <input type="text" class="form-control" id="n_matricula" required>
+                            <label class="form-label fw-semibold text-secondary">Matrícula</label>
+                            <input type="text" class="form-control form-control-premium" id="n_matricula" required>
                         </div>
-                        <div class="col-md-3 mb-3">
-                            <label class="form-label">Data Reg/Av</label>
-                            <input type="date" class="form-control" id="dt_reg_averb" required>
+                        <div class="col-md-4 mb-3">
+                            <label class="form-label fw-semibold text-secondary">Data do Registro/Averb.</label>
+                            <input type="date" class="form-control form-control-premium" id="dt_reg_averb" required>
                         </div>
-                        <div class="col-md-6 mb-3">
-                            <label class="form-label">Tipo de Ato</label>
-                            <input type="text" class="form-control" id="tipo_ato" required list="atoOptions">
+                        <div class="col-md-5 mb-3">
+                            <label class="form-label fw-semibold text-secondary">Tipo de Ato</label>
+                            <input type="text" class="form-control form-control-premium" id="tipo_ato" required list="atoOptions">
                             <datalist id="atoOptions">
                                 <option value="Compra e Venda">
                                 <option value="Averbação">
                                 <option value="Registro">
                                 <option value="Hipoteca">
                                 <option value="Cancelamento">
+                                <option value="Proprietário Atual">
                             </datalist>
                         </div>
                     </div>
                     <div class="row">
                         <div class="col-md-8 mb-3">
-                            <label class="form-label">Nome (Parte/Proprietário)</label>
-                            <input type="text" class="form-control" id="nome" required>
+                            <label class="form-label fw-semibold text-secondary">Nome Completo (Parte/Proprietário)</label>
+                            <input type="text" class="form-control form-control-premium" id="nome" required>
                         </div>
                         <div class="col-md-4 mb-3">
-                            <label class="form-label">CPF/CNPJ</label>
-                            <input type="text" class="form-control" id="cpf_cnpj">
+                            <label class="form-label fw-semibold text-secondary">CPF ou CNPJ</label>
+                            <input type="text" class="form-control form-control-premium" id="cpf_cnpj">
                         </div>
                     </div>
                     <div class="row">
                         <div class="col-md-4 mb-3">
-                            <label class="form-label">Data Venda (Opicional)</label>
-                            <input type="date" class="form-control" id="dt_venda">
+                            <label class="form-label fw-semibold text-secondary">Data da Venda (Opcional)</label>
+                            <input type="date" class="form-control form-control-premium" id="dt_venda">
                         </div>
                         <div class="col-md-8 mb-3">
-                            <label class="form-label">Observação</label>
-                            <input type="text" class="form-control" id="observacao">
+                            <label class="form-label fw-semibold text-secondary">Observação</label>
+                            <input type="text" class="form-control form-control-premium" id="observacao">
                         </div>
 
                         <!-- Level 3: Active Learning Checkbox -->
-                        <div class="col-12 mt-2">
-                            <div class="form-check form-switch p-3 border rounded bg-light">
-                                <input class="form-check-input" type="checkbox" id="teachIago">
+                        <div class="col-12 mt-3">
+                            <div class="form-check form-switch p-3 border rounded bg-light" style="border-radius: 12px !important;">
+                                <input class="form-check-input ms-0 me-2" type="checkbox" id="teachIago">
                                 <label class="form-check-label fw-bold text-primary" for="teachIago">
-                                    <i class="bi bi-robot"></i> Ensinar IAGO (Marque se corrigiu dados)
+                                    <i class="bi bi-robot"></i> Ensinar IAGO (Marque se corrigiu dados da IA)
                                 </label>
-                                <div class="form-text small">
-                                    Se você corrigiu dados que a IA errou, marque esta opção para que o IAGO aprenda com
-                                    sua correção.
+                                <div class="form-text small text-muted">
+                                    Se você está salvando uma correção sobre uma extração errada da IA, marque esta opção para que o IAGO aprenda.
                                 </div>
                             </div>
                         </div>
-
                     </div>
                 </form>
             </div>
-            <div class="modal-footer">
-                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
-                <button type="button" class="btn btn-primary" onclick="saveRecord()">Salvar</button>
+            <div class="modal-footer p-4 border-top-0">
+                <button type="button" class="btn btn-light px-4 btn-premium-action" data-bs-dismiss="modal" style="border-radius: 12px;">Cancelar</button>
+                <button type="button" class="btn btn-primary px-4 btn-premium-action" onclick="saveRecord()" style="border-radius: 12px;">Salvar Registro</button>
             </div>
         </div>
     </div>
@@ -401,21 +473,25 @@
 
 <!-- Import Modal -->
 <div class="modal fade" id="importModal" tabindex="-1">
-    <div class="modal-dialog">
-        <div class="modal-content">
-            <div class="modal-header">
-                <h5 class="modal-title">Importar Excel</h5>
-                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content shadow-lg" style="border-radius: 20px; border: none; overflow: hidden;">
+            <div class="modal-header bg-success text-white p-4">
+                <h5 class="modal-title fw-bold font-outfit">Importar Planilha Excel</h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
             </div>
-            <div class="modal-body">
-                <div class="alert alert-info small">
-                    Colunas: <strong>NOME, CNPJCPF, NMATRICULA, TIPODEATO, DTREGAVERB, DTVENDA</strong>.
+            <div class="modal-body p-4">
+                <div class="alert alert-info small mb-3" style="border-radius: 12px;">
+                    O arquivo Excel deve conter exatamente as seguintes colunas:<br>
+                    <strong>NOME, CNPJCPF, NMATRICULA, TIPODEATO, DTREGAVERB, DTVENDA</strong>.
                 </div>
-                <input type="file" class="form-control" id="excelFile" accept=".xlsx, .xls">
+                <div class="mb-3">
+                    <label class="form-label fw-semibold text-secondary">Selecione o arquivo (.xlsx ou .xls)</label>
+                    <input type="file" class="form-control form-control-premium" id="excelFile" accept=".xlsx, .xls">
+                </div>
             </div>
-            <div class="modal-footer">
-                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
-                <button type="button" class="btn btn-success" onclick="uploadExcel()">Importar</button>
+            <div class="modal-footer p-4 border-top-0">
+                <button type="button" class="btn btn-light px-4 btn-premium-action" data-bs-dismiss="modal" style="border-radius: 12px;">Cancelar</button>
+                <button type="button" class="btn btn-success px-4 btn-premium-action" onclick="uploadExcel()" style="border-radius: 12px;">Importar Planilha</button>
             </div>
         </div>
     </div>
@@ -424,7 +500,7 @@
 <script>
     let currentDetailData = [];
     let activeMatricula = null;
-    let activeImovelId = null; // For image link
+    let activeImovelId = null; 
 
     document.addEventListener('DOMContentLoaded', function () {
         loadSummary();
@@ -436,25 +512,33 @@
 
     function parseDate(dateStr) {
         if (!dateStr) return null;
-        // Try ISO first (YYYY-MM-DD)
         let parts = dateStr.split('-');
         if (parts.length === 3) return new Date(parts[0], parts[1] - 1, parts[2]);
 
-        // Try BR format (DD/MM/YYYY)
         parts = dateStr.split('/');
         if (parts.length === 3) return new Date(parts[2], parts[1] - 1, parts[0]);
 
-        return new Date(dateStr); // Fallback
+        return new Date(dateStr); 
     }
 
     function formatDateToInput(dateStr) {
-        // Converts DD/MM/YYYY or similar to YYYY-MM-DD for input type=date
         const d = parseDate(dateStr);
         if (!d || isNaN(d)) return '';
         const y = d.getFullYear();
         const m = String(d.getMonth() + 1).padStart(2, '0');
         const day = String(d.getDate()).padStart(2, '0');
         return `${y}-${m}-${day}`;
+    }
+
+    // --- EXPORT ACTIONS ---
+    function exportSummaryExcel() {
+        const search = document.getElementById('searchSummary').value;
+        window.location.href = `/indicador_pessoal/export/excel?search=${encodeURIComponent(search)}`;
+    }
+
+    function exportMatriculaPDF() {
+        if (!activeMatricula) return;
+        window.location.href = `/indicador_pessoal/export/pdf/${encodeURIComponent(activeMatricula)}`;
     }
 
     // --- SUMMARY / LIST VIEW ---
@@ -471,26 +555,25 @@
             .then(data => {
                 loading.classList.add('d-none');
                 if (data.length === 0) {
-                    tbody.innerHTML = '<tr><td colspan="5" class="text-center py-4">Nenhum registro encontrado.</td></tr>';
+                    tbody.innerHTML = '<tr><td colspan="5" class="text-center py-4 text-muted">Nenhum registro encontrado.</td></tr>';
                     return;
                 }
                 data.forEach(item => {
                     const tr = document.createElement('tr');
-                    tr.className = 'card-hover cursor-pointer';
+                    tr.style.cursor = 'pointer';
                     tr.onclick = (e) => {
-                        // Avoid trigger if button clicked
                         if (e.target.tagName !== 'BUTTON' && e.target.tagName !== 'I') openDetail(item.n_matricula);
                     };
 
                     const dateStr = item.ultima_data ? new Date(item.ultima_data).toLocaleDateString('pt-BR') : '-';
 
                     tr.innerHTML = `
-                        <td class="fw-bold text-primary">${item.n_matricula}</td>
-                        <td>${item.nome || 'Desconhecido'}</td>
-                        <td class="text-center"><span class="badge bg-secondary rounded-pill">${item.qtd_atos}</span></td>
-                        <td class="text-center small">${dateStr}</td>
-                        <td class="text-end">
-                            <button class="btn btn-sm btn-outline-primary" onclick="openDetail('${item.n_matricula}')">
+                        <td class="ps-4 fw-bold text-primary font-outfit">${item.n_matricula}</td>
+                        <td class="fw-semibold text-dark">${item.nome || 'Desconhecido'}</td>
+                        <td class="text-center"><span class="badge bg-primary-subtle text-primary border border-primary-subtle px-2.5 py-1.5" style="border-radius: 8px; font-weight: 600;">${item.qtd_atos} atos</span></td>
+                        <td class="text-center small text-muted font-outfit">${dateStr}</td>
+                        <td class="text-end pe-4">
+                            <button class="btn btn-sm btn-outline-primary px-3" style="border-radius: 8px;" onclick="openDetail('${item.n_matricula}')">
                                 <i class="bi bi-eye"></i> Detalhes
                             </button>
                         </td>
@@ -501,7 +584,7 @@
             .catch(err => {
                 loading.classList.add('d-none');
                 console.error(err);
-                alert('Erro ao carregar lista.');
+                alert('Erro ao carregar lista de resumo.');
             });
     }
 
@@ -510,17 +593,13 @@
         activeMatricula = matricula;
         document.getElementById('detailMatricula').innerText = matricula;
 
+        document.getElementById('globalHeader').classList.add('d-none');
         document.getElementById('listView').style.display = 'none';
         document.getElementById('detailView').style.display = 'block';
 
-        // Reset Header
-        document.getElementById('propertyDetailsSection').classList.add('d-none');
-        document.getElementById('propertyNotFoundMsg').classList.add('d-none');
         document.getElementById('btnVerImagem').classList.add('d-none');
 
-        // Load Details from Indicator
         loadDetailData(matricula);
-        // Load Property Header from Imoveis
         loadPropertyHeader(matricula);
     }
 
@@ -531,13 +610,9 @@
                 if (res.found && res.data) {
                     const d = res.data;
                     activeImovelId = d.id;
-
-                    // Show Image Button if exists
                     if (d.arquivo_tiff) {
                         document.getElementById('btnVerImagem').classList.remove('d-none');
                     }
-                } else {
-                    // document.getElementById('propertyNotFoundMsg').classList.remove('d-none'); // Msg hidden too
                 }
             })
             .catch(err => console.error("Error loading property details: ", err));
@@ -556,12 +631,13 @@
         activeImovelId = null;
         document.getElementById('detailView').style.display = 'none';
         document.getElementById('listView').style.display = 'block';
+        document.getElementById('globalHeader').classList.remove('d-none');
+        loadSummary();
     }
 
     function loadDetailData(matricula) {
         const timelineArea = document.getElementById('timelineArea');
-        // Loading State
-        timelineArea.innerHTML = '<div class="timeline-line"></div><div class="text-center w-100 mt-5"><div class="spinner-border text-primary"></div></div>';
+        timelineArea.innerHTML = '<div class="timeline-line-bg"></div><div class="text-center w-100 mt-5"><div class="spinner-border text-primary"></div></div>';
 
         fetch(`/indicador_pessoal/api/list?search=${encodeURIComponent(matricula)}`)
             .then(r => r.json())
@@ -575,14 +651,14 @@
             .catch(err => console.error(err));
     }
 
-    const themeClasses = ['theme-cyan', 'theme-blue', 'theme-purple', 'theme-pink'];
+    const themeClasses = ['theme-blue', 'theme-purple', 'theme-pink', 'theme-emerald'];
 
     function renderTimeline(data) {
         const container = document.getElementById('timelineArea');
-        container.innerHTML = '<div class="timeline-line-bg"></div>'; // Background Line
+        container.innerHTML = '<div class="timeline-line-bg"></div>'; 
 
         if (data.length === 0) {
-            container.innerHTML += '<div class="text-center w-50 mx-auto mt-5 text-muted">Sem dados para esta matrícula.</div>';
+            container.innerHTML += '<div class="text-center w-50 mx-auto mt-5 text-muted">Sem dados históricos de atos estruturados para esta matrícula.</div>';
             return;
         }
 
@@ -600,41 +676,23 @@
             const year = dateObj ? dateObj.getFullYear() : '????';
             const dateStr = dateObj ? dateObj.toLocaleDateString('pt-BR') : item.dt_reg_averb;
 
-            // Helper for Date Input (YYYY-MM-DD)
-            function formatDateToInput(dateStr) {
-                if (!dateStr) return '';
-                // If already YYYY-MM-DD
-                if (dateStr.match(/^\d{4}-\d{2}-\d{2}$/)) return dateStr;
-
-                // If PT-BR DD/MM/YYYY
-                const parts = dateStr.split('/');
-                if (parts.length === 3) {
-                    return `${parts[2]}-${parts[1]}-${parts[0]}`;
-                }
-                return '';
-            }
-
-            // Cycle colors
             const themeClass = themeClasses[colorIdx % themeClasses.length];
             colorIdx++;
 
-            // Clean Text
-            const nomeCurto = item.nome.length > 30 ? item.nome.substring(0, 27) + '...' : item.nome;
+            const nomeCurto = item.nome.length > 25 ? item.nome.substring(0, 22) + '...' : item.nome;
 
             const itemDiv = document.createElement('div');
             itemDiv.className = `timeline-item ${isTop ? 'top' : 'bottom'} ${themeClass}`;
 
             itemDiv.innerHTML = `
-                <!-- Center Dot -->
                 <div class="timeline-main-dot" onclick="editRecord(${item.id})"></div>
-                
-                <!-- Content Block (includes Stick & End Dot via CSS) -->
                 <div class="timeline-content" onclick="editRecord(${item.id})">
                     <div class="timeline-year">${year}</div>
                     <div class="timeline-text d-flex flex-column align-items-center">
-                        <span class="fw-bold d-block text-truncate w-100" title="${item.nome}">${nomeCurto}</span>
-                        <small class="text-muted d-block mt-1">${item.tipo_ato}</small>
-                        <span class="badge bg-light text-dark mt-2 border">${dateStr}</span>
+                        <span class="fw-bold d-block text-truncate w-100 font-outfit" title="${item.nome}">${nomeCurto}</span>
+                        ${item.cpf_cnpj ? `<small class="text-muted small font-outfit mt-1">${item.cpf_cnpj}</small>` : ''}
+                        <small class="text-primary fw-semibold d-block mt-1" style="font-size: 0.75rem;">${item.tipo_ato}</small>
+                        <span class="badge badge-timeline mt-2 px-2.5 py-1.5" style="border-radius: 6px;">${dateStr}</span>
                     </div>
                 </div>
             `;
@@ -642,7 +700,6 @@
             isTop = !isTop;
         });
 
-        // Ensure scroll to start
         container.scrollLeft = 0;
     }
 
@@ -651,25 +708,26 @@
         tbody.innerHTML = '';
 
         if (data.length === 0) {
-            tbody.innerHTML = '<tr><td colspan="7" class="text-center">Nenhum registro.</td></tr>';
+            tbody.innerHTML = '<tr><td colspan="7" class="text-center py-4 text-muted">Nenhum registro.</td></tr>';
             return;
         }
 
         data.forEach(item => {
             const dateObj = parseDate(item.dt_reg_averb);
             const dateStr = dateObj ? dateObj.toLocaleDateString('pt-BR') : item.dt_reg_averb;
+            const dateVendaStr = item.dt_venda ? parseDate(item.dt_venda).toLocaleDateString('pt-BR') : '-';
 
             const tr = document.createElement('tr');
             tr.innerHTML = `
-                <td>${dateStr}</td>
-                <td><span class="badge bg-light text-dark border">${item.n_matricula}</span></td>
-                <td>${item.nome}</td>
-                <td>${item.cpf_cnpj || '-'}</td>
-                <td>${item.tipo_ato}</td>
-                <td>${item.dt_venda || '-'}</td>
-                <td class="text-end">
-                    <button class="btn btn-sm btn-outline-primary me-1" onclick="editRecord(${item.id})"><i class="bi bi-pencil"></i></button>
-                    <button class="btn btn-sm btn-outline-danger" onclick="deleteRecord(${item.id})"><i class="bi bi-trash"></i></button>
+                <td class="ps-4 fw-bold font-outfit">${dateStr}</td>
+                <td><span class="badge bg-primary-subtle text-primary border border-primary-subtle px-2.5 py-1" style="border-radius: 6px; font-weight: 500;">${item.tipo_ato}</span></td>
+                <td class="fw-semibold text-dark">${item.nome}</td>
+                <td class="font-outfit">${item.cpf_cnpj || '-'}</td>
+                <td class="text-center font-outfit">${dateVendaStr}</td>
+                <td class="small text-muted">${item.observacao || '-'}</td>
+                <td class="text-end pe-4">
+                    <button class="btn btn-sm btn-outline-primary me-1" style="border-radius: 6px;" onclick="editRecord(${item.id})" title="Editar"><i class="bi bi-pencil"></i></button>
+                    <button class="btn btn-sm btn-outline-danger" style="border-radius: 6px;" onclick="deleteRecord(${item.id})" title="Excluir"><i class="bi bi-trash"></i></button>
                 </td>
              `;
             tbody.appendChild(tr);
@@ -677,12 +735,10 @@
     }
 
     // --- ACTIONS ---
-
     let modal;
     let importModal;
 
     document.addEventListener('DOMContentLoaded', function () {
-        // Initialize modals after DOM is ready
         const recordModalEl = document.getElementById('recordModal');
         if (recordModalEl) modal = new bootstrap.Modal(recordModalEl);
 
@@ -693,9 +749,9 @@
     function openModalNew() {
         document.getElementById('recordForm').reset();
         document.getElementById('recordId').value = '';
+        document.getElementById('teachIago').checked = false; // Reset check
         document.getElementById('modalTitle').innerText = 'Novo Registro';
 
-        // Pre-fill matricula if active
         if (activeMatricula) {
             document.getElementById('n_matricula').value = activeMatricula;
         }
@@ -712,11 +768,10 @@
         document.getElementById('cpf_cnpj').value = item.cpf_cnpj;
         document.getElementById('n_matricula').value = item.n_matricula;
         document.getElementById('tipo_ato').value = item.tipo_ato;
+        document.getElementById('teachIago').checked = false; // Reset check
 
-        // Critical Fix: Format DD/MM/YYYY to YYYY-MM-DD for input type="date"
         document.getElementById('dt_reg_averb').value = formatDateToInput(item.dt_reg_averb);
         document.getElementById('dt_venda').value = formatDateToInput(item.dt_venda);
-
         document.getElementById('observacao').value = item.observacao || '';
 
         document.getElementById('modalTitle').innerText = 'Editar Registro';
@@ -725,6 +780,7 @@
 
     function saveRecord() {
         const id = document.getElementById('recordId').value;
+        const teachChecked = document.getElementById('teachIago').checked;
         const body = {
             id: id ? parseInt(id) : null,
             nome: document.getElementById('nome').value,
@@ -748,8 +804,7 @@
             .then(r => r.json())
             .then(res => {
                 if (res.status === 'success') {
-                    // Active Learning Check
-                    if (document.getElementById('teachIago').checked) {
+                    if (teachChecked) {
                         fetch('/indicador_pessoal/learn', {
                             method: 'POST',
                             headers: {
@@ -763,15 +818,15 @@
 
                     modal.hide();
                     if (activeMatricula) loadDetailData(activeMatricula);
-                    loadSummary(); // Update Summary counts
+                    loadSummary(); 
                 } else {
-                    alert('Erro: ' + res.message);
+                    alert('Erro ao salvar registro: ' + res.message);
                 }
             });
     }
 
     function deleteRecord(id) {
-        if (!confirm('Excluir este registro?')) return;
+        if (!confirm('Tem certeza de que deseja excluir este registro permanentemente?')) return;
         fetch(`/indicador_pessoal/api/delete/${id}`, {
             method: 'POST',
             headers: {
@@ -785,7 +840,7 @@
                     if (activeMatricula) loadDetailData(activeMatricula);
                     loadSummary();
                 } else {
-                    alert('Erro: ' + res.message);
+                    alert('Erro ao excluir: ' + res.message);
                 }
             });
     }
@@ -809,22 +864,175 @@
             loadSummary();
         });
     }
+</script>
 
-    function extractFromAcervo() {
-        if (!confirm('Iniciar extração em massa do acervo?')) return;
-        // Show generic loading?
-        document.body.style.cursor = 'wait';
-        fetch('/indicador_pessoal/extract', {
+<!-- Extraction Status Widget -->
+<div id="extractionWidget" class="position-fixed bottom-0 end-0 m-4 p-3 bg-white shadow-lg rounded-4 border d-none" style="width: 350px; z-index: 1050; border-color: #e2e8f0 !important; animation: slideUp 0.3s ease;">
+    <div class="d-flex justify-content-between align-items-center mb-2">
+        <h6 class="mb-0 fw-bold font-outfit text-primary d-flex align-items-center gap-2">
+            <i class="bi bi-gear-wide-connected text-primary fs-5" style="animation: spin 2s linear infinite;"></i>
+            Processando Acervo
+        </h6>
+        <button class="btn btn-sm btn-outline-danger py-0 px-2" style="border-radius: 8px; font-size: 0.8rem;" onclick="cancelExtraction()">Parar</button>
+    </div>
+    <div class="small fw-semibold text-dark mb-1" id="extractionUserText"></div>
+    <div class="small text-muted mb-2 font-outfit" id="extractionStatusText">Iniciando...</div>
+    <div class="progress" style="height: 6px; border-radius: 3px;">
+        <div id="extractionProgressBar" class="progress-bar progress-bar-striped progress-bar-animated bg-primary" role="progressbar" style="width: 0%"></div>
+    </div>
+</div>
+<style>
+    @keyframes slideUp { from { transform: translateY(100px); opacity: 0; } to { transform: translateY(0); opacity: 1; } }
+    @keyframes spin { 100% { transform: rotate(360deg); } }
+</style>
+
+<script>
+    let extractionInterval = null;
+
+    function startExtractionPolling() {
+        if (extractionInterval) return;
+        
+        document.getElementById('extractionWidget').classList.remove('d-none');
+        
+        Swal.fire({
+            title: 'Extração Iniciada!',
+            text: 'O IAGO está processando o acervo em segundo plano. Você pode continuar usando o sistema normalmente enquanto a engrenagem estiver girando no canto da tela.',
+            icon: 'info',
+            toast: true,
+            position: 'top-end',
+            showConfirmButton: false,
+            timer: 5000
+        });
+        
+        extractionInterval = setInterval(() => {
+            fetch('/indicador_pessoal/api/extraction_status')
+                .then(r => r.json())
+                .then(data => {
+                    if (data.running) {
+                        const pct = data.total > 0 ? Math.round((data.current / data.total) * 100) : 0;
+                        document.getElementById('extractionUserText').innerText = `Usuário ${data.user} solicitou a extração...`;
+                        document.getElementById('extractionProgressBar').style.width = pct + '%';
+                        document.getElementById('extractionStatusText').innerHTML = 
+                            `Matrícula: <strong>${data.current_matricula || '...'}</strong><br>` +
+                            `Progresso: ${data.current} de ${data.total} (${pct}%)`;
+                    } else {
+                        stopExtractionPolling();
+                        alert('Extração concluída ou encerrada.');
+                        loadSummary();
+                    }
+                }).catch(err => console.error(err));
+        }, 2000);
+    }
+
+    function stopExtractionPolling() {
+        if (extractionInterval) {
+            clearInterval(extractionInterval);
+            extractionInterval = null;
+        }
+        document.getElementById('extractionWidget').classList.add('d-none');
+    }
+
+    function cancelExtraction() {
+        if(!confirm('Deseja realmente interromper o processamento atual?')) return;
+        fetch('/indicador_pessoal/api/cancel_extraction', {
             method: 'POST',
-            headers: {
-                'X-CSRFToken': getCsrfToken(),
-                'X-Requested-With': 'XMLHttpRequest'
-            }
+            headers: {'X-CSRFToken': getCsrfToken()}
         }).then(r => r.json()).then(res => {
-            document.body.style.cursor = 'default';
+            stopExtractionPolling();
             alert(res.message);
-            loadSummary();
         });
     }
+
+    function extractFromAcervo() {
+        Swal.fire({
+            title: 'Extrair do Acervo?',
+            text: 'Este processo lerá todas as matrículas do sistema usando IA. Pode demorar bastante. O processo rodará em segundo plano e você poderá continuar usando o sistema.',
+            icon: 'question',
+            showCancelButton: true,
+            confirmButtonColor: '#0d6efd',
+            cancelButtonColor: '#6c757d',
+            confirmButtonText: '<i class="bi bi-play-fill"></i> Iniciar Extração',
+            cancelButtonText: 'Cancelar'
+        }).then((result) => {
+            if (result.isConfirmed) {
+                fetch('/indicador_pessoal/extract', {
+                    method: 'POST',
+                    headers: {
+                        'X-CSRFToken': getCsrfToken(),
+                        'X-Requested-With': 'XMLHttpRequest'
+                    }
+                }).then(r => r.json()).then(res => {
+                    if(res.status === 'success') {
+                        startExtractionPolling();
+                    } else {
+                        Swal.fire('Atenção', res.message, 'warning');
+                    }
+                }).catch(err => {
+                    console.error(err);
+                    Swal.fire('Erro', 'Ocorreu um erro ao iniciar a extração.', 'error');
+                });
+            }
+        });
+    }
+
+    function extractSingleMatricula() {
+        if (!activeMatricula) return;
+        
+        Swal.fire({
+            title: `Extrair Matrícula ${activeMatricula}?`,
+            text: 'O IAGO vai analisar o documento desta matrícula específica agora mesmo.',
+            icon: 'question',
+            showCancelButton: true,
+            confirmButtonColor: '#ffc107',
+            cancelButtonColor: '#6c757d',
+            confirmButtonText: '<i class="bi bi-magic"></i> Analisar Matrícula',
+            cancelButtonText: 'Cancelar'
+        }).then((result) => {
+            if (result.isConfirmed) {
+                // Show loading state
+                Swal.fire({
+                    title: 'Analisando...',
+                    text: 'O IAGO está lendo a matrícula. Isso pode levar alguns segundos.',
+                    allowOutsideClick: false,
+                    didOpen: () => {
+                        Swal.showLoading();
+                    }
+                });
+                
+                fetch(`/indicador_pessoal/extract_single/${encodeURIComponent(activeMatricula)}`, {
+                    method: 'POST',
+                    headers: {
+                        'X-CSRFToken': getCsrfToken(),
+                        'X-Requested-With': 'XMLHttpRequest'
+                    }
+                }).then(r => r.json()).then(res => {
+                    if (res.status === 'success') {
+                        Swal.fire({
+                            title: 'Sucesso!',
+                            text: res.message,
+                            icon: 'success',
+                            timer: 2000,
+                            showConfirmButton: false
+                        });
+                        loadDetailData(activeMatricula);
+                    } else {
+                        Swal.fire('Erro', res.message, 'error');
+                    }
+                }).catch(err => {
+                    console.error(err);
+                    Swal.fire('Erro', 'Falha ao comunicar com o servidor.', 'error');
+                });
+            }
+        });
+    }
+    
+    // Check if it's already running on page load
+    document.addEventListener('DOMContentLoaded', function() {
+        fetch('/indicador_pessoal/api/extraction_status')
+            .then(r => r.json())
+            .then(data => {
+                if(data.running) startExtractionPolling();
+            });
+    });
 </script>
 {% endblock %}

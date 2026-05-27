@@ -1,38 +1,624 @@
 {% extends "base.html" %}
 
 {% block conteudo %}
-<h2 class="fw-bold text-secondary mb-4">Dashboard</h2>
+<style>
+    @import url('https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&display=swap');
 
-<div class="row g-4 mb-4">
-    <div class="col-md-4">
-        <div class="card shadow-sm border-start border-primary border-4">
-            <div class="card-body">
-                <div class="text-muted small text-uppercase fw-bold">Total Matrículas</div>
-                <div class="display-5 fw-bold text-dark">{{ total }}</div>
+    /* Global Dashboard Styles */
+    .dashboard-container {
+        font-family: 'Inter', sans-serif;
+    }
+    
+    .font-outfit {
+        font-family: 'Outfit', sans-serif;
+    }
+
+    /* Premium Cards */
+    .card-kpi {
+        border-radius: 20px !important;
+        border: 1px solid rgba(255, 255, 255, 0.2) !important;
+        transition: all 0.4s cubic-bezier(0.16, 1, 0.3, 1);
+        position: relative;
+        overflow: hidden;
+        box-shadow: 0 10px 30px -10px rgba(0, 0, 0, 0.08) !important;
+    }
+    
+    .card-kpi:hover {
+        transform: translateY(-8px) scale(1.02);
+        box-shadow: 0 20px 40px -15px rgba(0, 0, 0, 0.15) !important;
+    }
+
+    .card-kpi::before {
+        content: '';
+        position: absolute;
+        top: -50%;
+        left: -50%;
+        width: 200%;
+        height: 200%;
+        background: radial-gradient(circle, rgba(255,255,255,0.15) 0%, transparent 60%);
+        transform: rotate(30deg);
+        transition: all 0.5s ease;
+        pointer-events: none;
+    }
+
+    .card-kpi:hover::before {
+        left: -30%;
+        top: -30%;
+    }
+
+    /* Glassmorphism Section Cards */
+    .glass-section-card {
+        background: rgba(255, 255, 255, 0.75);
+        backdrop-filter: blur(15px);
+        -webkit-backdrop-filter: blur(15px);
+        border: 1px solid rgba(226, 232, 240, 0.8) !important;
+        border-radius: 20px !important;
+        box-shadow: 0 8px 30px rgba(0, 0, 0, 0.02) !important;
+        transition: all 0.3s ease;
+    }
+
+    .glass-section-card:hover {
+        box-shadow: 0 12px 40px rgba(0, 0, 0, 0.05) !important;
+    }
+
+    .card-header-premium {
+        background: transparent !important;
+        border-bottom: 1px solid rgba(0, 0, 0, 0.05) !important;
+        padding: 1.5rem 1.5rem 1rem 1.5rem !important;
+    }
+
+    /* Gradients */
+    .bg-gradient-blue {
+        background: linear-gradient(135deg, #2563eb, #1d4ed8) !important;
+    }
+    .bg-gradient-emerald {
+        background: linear-gradient(135deg, #059669, #047857) !important;
+    }
+    .bg-gradient-amber {
+        background: linear-gradient(135deg, #d97706, #b55207) !important;
+    }
+    .bg-gradient-purple {
+        background: linear-gradient(135deg, #7c3aed, #5b21b6) !important;
+    }
+
+    /* Custom Badges */
+    .badge-premium {
+        padding: 0.5rem 1rem;
+        border-radius: 30px;
+        font-weight: 600;
+        font-size: 0.75rem;
+        letter-spacing: 0.5px;
+    }
+
+    /* Timeline Styles */
+    .timeline-container {
+        position: relative;
+        padding-left: 10px;
+    }
+    
+    .timeline-premium-item {
+        position: relative;
+        padding-left: 28px;
+        border-left: 2px solid #e2e8f0;
+        padding-bottom: 1.5rem;
+    }
+    
+    .timeline-premium-item:last-child {
+        border-left: 2px solid transparent;
+        padding-bottom: 0;
+    }
+
+    .timeline-premium-dot {
+        width: 12px;
+        height: 12px;
+        border-radius: 50%;
+        background-color: #2563eb;
+        position: absolute;
+        left: -7px;
+        top: 6px;
+        border: 2px solid #fff;
+        box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.2);
+        transition: all 0.3s ease;
+    }
+    
+    .timeline-premium-item:hover .timeline-premium-dot {
+        background-color: #7c3aed;
+        box-shadow: 0 0 0 5px rgba(124, 58, 237, 0.25);
+    }
+
+    /* Table Customizations */
+    .table-premium th {
+        font-weight: 600;
+        color: #4a5568;
+        background-color: #f8fafc !important;
+    }
+    
+    .table-premium td {
+        padding: 1rem 0.75rem;
+        vertical-align: middle;
+    }
+
+    .avatar-char-premium {
+        width: 40px;
+        height: 40px;
+        border-radius: 12px;
+        font-weight: 700;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        background: linear-gradient(135deg, #3b82f6, #2563eb);
+        color: white;
+        font-size: 1rem;
+        box-shadow: 0 4px 10px rgba(37, 99, 235, 0.2);
+    }
+
+    /* Animations */
+    @keyframes fadeInUp {
+        from {
+            opacity: 0;
+            transform: translateY(20px);
+        }
+        to {
+            opacity: 1;
+            transform: translateY(0);
+        }
+    }
+
+    .animate-fade-in {
+        animation: fadeInUp 0.6s cubic-bezier(0.16, 1, 0.3, 1) both;
+    }
+    
+    .delay-1 { animation-delay: 0.1s; }
+    .delay-2 { animation-delay: 0.2s; }
+    .delay-3 { animation-delay: 0.3s; }
+</style>
+
+<div class="dashboard-container px-1 py-2 animate-fade-in">
+    <!-- Header Section -->
+    <div class="d-flex flex-column flex-md-row justify-content-between align-items-md-center gap-3 mb-4">
+        <div>
+            <h2 class="fw-bold text-dark mb-1 font-outfit">Painel de Controle</h2>
+            <p class="text-muted small mb-0">Visão analítica de produtividade, conformidade ONR e processamento de matrículas</p>
+        </div>
+        <div class="d-flex align-items-center gap-2">
+            <a href="{{ url_for('dashboard_pdf') }}" class="btn btn-danger shadow-sm px-3 d-flex align-items-center gap-2" style="border-radius: 12px; font-weight: 500; font-size: 0.9rem; transition: all 0.2s ease;">
+                <i class="bi bi-file-earmark-pdf-fill fs-5"></i> Exportar Relatório PDF
+            </a>
+            <span class="badge bg-white text-dark border shadow-sm p-2.5 px-3 d-flex align-items-center font-outfit" style="border-radius: 12px; font-weight: 600; font-size: 0.85rem;">
+                <i class="bi bi-clock me-2 text-primary"></i>{{ now.strftime('%d/%m/%Y %H:%M') if now else '' }}
+            </span>
+        </div>
+    </div>
+
+    <!-- KPI Grid -->
+    <div class="row g-4 mb-4">
+        <!-- KPI 1 -->
+        <div class="col-md-3 col-sm-6 animate-fade-in delay-1">
+            <div class="card card-kpi bg-gradient-blue text-white h-100">
+                <div class="card-body p-4 d-flex flex-column justify-content-between">
+                    <div class="d-flex justify-content-between align-items-start">
+                        <div>
+                            <span class="opacity-80 text-uppercase fw-bold mb-1 d-block" style="font-size: 0.7rem; letter-spacing: 1px;">Matrículas no Acervo</span>
+                            <h2 class="display-5 fw-bold mb-0 font-outfit">{{ total }}</h2>
+                        </div>
+                        <div class="bg-white bg-opacity-20 p-2.5 rounded-3" style="backdrop-filter: blur(5px);">
+                            <i class="bi bi-journal-text fs-3"></i>
+                        </div>
+                    </div>
+                    <div class="mt-4 pt-2 border-top border-white border-opacity-10 d-flex align-items-center justify-content-between">
+                        <span class="small opacity-90"><i class="bi bi-folder-check me-1"></i>Cadastro Geral</span>
+                        <span class="badge bg-white bg-opacity-20 text-white font-outfit" style="font-size: 0.75rem;">Total</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- KPI 2 -->
+        <div class="col-md-3 col-sm-6 animate-fade-in delay-1">
+            <div class="card card-kpi bg-gradient-emerald text-white h-100">
+                <div class="card-body p-4 d-flex flex-column justify-content-between">
+                    <div class="d-flex justify-content-between align-items-start">
+                        <div>
+                            <span class="opacity-80 text-uppercase fw-bold mb-1 d-block" style="font-size: 0.7rem; letter-spacing: 1px;">Matrículas Validadas</span>
+                            <h2 class="display-5 fw-bold mb-0 font-outfit">{{ concluidos }}</h2>
+                        </div>
+                        <div class="bg-white bg-opacity-20 p-2.5 rounded-3" style="backdrop-filter: blur(5px);">
+                            <i class="bi bi-file-earmark-check fs-3"></i>
+                        </div>
+                    </div>
+                    <div class="mt-4 pt-2 border-top border-white border-opacity-10 d-flex align-items-center justify-content-between">
+                        <span class="small opacity-90">
+                            <i class="bi bi-percent me-1"></i>
+                            {% if total > 0 %}
+                                {{ ((concluidos / total) * 100)|round(1) }}% concluído
+                            {% else %}
+                                0%
+                            {% endif %}
+                        </span>
+                        <span class="badge bg-white bg-opacity-20 text-white font-outfit" style="font-size: 0.75rem;">Revisadas</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- KPI 3 -->
+        <div class="col-md-3 col-sm-6 animate-fade-in delay-1">
+            <div class="card card-kpi bg-gradient-amber text-white h-100">
+                <div class="card-body p-4 d-flex flex-column justify-content-between">
+                    <div class="d-flex justify-content-between align-items-start">
+                        <div>
+                            <span class="opacity-80 text-uppercase fw-bold mb-1 d-block" style="font-size: 0.7rem; letter-spacing: 1px;">Indicador Pessoal</span>
+                            <h2 class="display-5 fw-bold mb-0 font-outfit">{{ total_indicadores }}</h2>
+                        </div>
+                        <div class="bg-white bg-opacity-20 p-2.5 rounded-3" style="backdrop-filter: blur(5px);">
+                            <i class="bi bi-people-fill fs-3"></i>
+                        </div>
+                    </div>
+                    <div class="mt-4 pt-2 border-top border-white border-opacity-10 d-flex align-items-center justify-content-between">
+                        <span class="small opacity-90"><i class="bi bi-person-badge-fill me-1"></i>Pessoas Qualificadas</span>
+                        <span class="badge bg-white bg-opacity-20 text-white font-outfit" style="font-size: 0.75rem;">Indicador</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- KPI 4 -->
+        <div class="col-md-3 col-sm-6 animate-fade-in delay-1">
+            <div class="card card-kpi bg-gradient-purple text-white h-100">
+                <div class="card-body p-4 d-flex flex-column justify-content-between">
+                    <div class="d-flex justify-content-between align-items-start">
+                        <div>
+                            <span class="opacity-80 text-uppercase fw-bold mb-1 d-block" style="font-size: 0.7rem; letter-spacing: 1px;">Atos Estruturados (ONR)</span>
+                            <h2 class="display-5 fw-bold mb-0 font-outfit">{{ total_atos }}</h2>
+                        </div>
+                        <div class="bg-white bg-opacity-20 p-2.5 rounded-3" style="backdrop-filter: blur(5px);">
+                            <i class="bi bi-map-fill fs-3"></i>
+                        </div>
+                    </div>
+                    <div class="mt-4 pt-2 border-top border-white border-opacity-10 d-flex align-items-center justify-content-between">
+                        <span class="small opacity-90"><i class="bi bi-cpu-fill me-1"></i>Estruturação de Atos</span>
+                        <span class="badge bg-white bg-opacity-20 text-white font-outfit" style="font-size: 0.75rem;">IAGO / ONR</span>
+                    </div>
+                </div>
             </div>
         </div>
     </div>
-    <div class="col-md-4">
-        <div class="card shadow-sm border-start border-success border-4">
-            <div class="card-body">
-                <div class="text-muted small text-uppercase fw-bold">Concluídas</div>
-                <div class="display-5 fw-bold text-success">{{ concluidos }}</div>
+
+    <!-- Charts Row -->
+    <div class="row g-4 mb-4">
+        <!-- Donut Chart & Conformidade ONR -->
+        <div class="col-lg-5 col-md-12 animate-fade-in delay-2">
+            <div class="card glass-section-card h-100">
+                <div class="card-header-premium d-flex justify-content-between align-items-center">
+                    <div>
+                        <h5 class="fw-bold mb-0 text-dark font-outfit d-flex align-items-center">
+                            <i class="bi bi-shield-check text-primary me-2"></i> Conformidade ONR
+                        </h5>
+                        <p class="text-muted small mb-0">Normativa ITN 03/2025</p>
+                    </div>
+                    <span class="badge bg-primary-subtle text-primary border border-primary-subtle px-2.5 py-1.5" style="border-radius: 8px; font-weight: 600; font-size: 0.75rem;">
+                        Status Mapa
+                    </span>
+                </div>
+                <div class="card-body p-4 d-flex flex-column justify-content-center">
+                    <div class="row align-items-center">
+                        <div class="col-sm-6 text-center position-relative mb-3 mb-sm-0">
+                            <!-- Canvas for Donut Chart -->
+                            <div style="position: relative; height: 180px; width: 100%; margin: 0 auto;">
+                                <canvas id="chartConformidade"></canvas>
+                                <!-- Center Percent Text -->
+                                <div style="position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); text-align: center;">
+                                    {% set perc_mapa = (concluidos_mapa/total_atos*100)|round(1) if total_atos > 0 else 0 %}
+                                    <h4 class="fw-bold text-dark mb-0 font-outfit" style="font-size: 1.4rem;">{{ perc_mapa }}%</h4>
+                                    <span class="text-muted" style="font-size: 0.65rem; font-weight: 600; text-uppercase; letter-spacing: 0.5px;">Revisado</span>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="col-sm-6 ps-sm-4 text-center text-sm-start">
+                            <div class="mb-3">
+                                <div class="text-muted small fw-bold text-uppercase" style="font-size: 0.65rem; letter-spacing: 0.5px;">Atos Validados</div>
+                                <div class="display-6 fw-bold text-success font-outfit">{{ concluidos_mapa }}</div>
+                            </div>
+                            <div class="mb-3">
+                                <div class="text-muted small fw-bold text-uppercase" style="font-size: 0.65rem; letter-spacing: 0.5px;">Aguardando Revisão</div>
+                                <div class="h3 fw-bold text-secondary font-outfit">{{ total_atos - concluidos_mapa }}</div>
+                            </div>
+                            <div>
+                                <span class="badge-premium bg-success-subtle text-success border border-success-subtle d-inline-flex align-items-center">
+                                    <span class="spinner-grow spinner-grow-sm me-1.5 text-success" role="status" style="width: 8px; height: 8px;"></span>
+                                    Prontos para Envio
+                                </span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Bar Chart Produtividade -->
+        <div class="col-lg-7 col-md-12 animate-fade-in delay-2">
+            <div class="card glass-section-card h-100">
+                <div class="card-header-premium d-flex justify-content-between align-items-center">
+                    <div>
+                        <h5 class="fw-bold mb-0 text-dark font-outfit d-flex align-items-center">
+                            <i class="bi bi-bar-chart-line text-primary me-2"></i> Análise de Produtividade da Equipe
+                        </h5>
+                        <p class="text-muted small mb-0">Comparativo de validações gerais e atos estruturados</p>
+                    </div>
+                    <span class="badge bg-light text-dark border px-2.5 py-1.5" style="border-radius: 8px; font-weight: 500; font-size: 0.75rem;">
+                        Gráfico Comparativo
+                    </span>
+                </div>
+                <div class="card-body p-4">
+                    <div style="position: relative; height: 210px; width: 100%;">
+                        <canvas id="chartProdutividade"></canvas>
+                    </div>
+                </div>
             </div>
         </div>
     </div>
-    <div class="col-md-4">
-        <div class="card shadow-sm border-start border-warning border-4">
-            <div class="card-body">
-                <div class="text-muted small text-uppercase fw-bold">Pendentes</div>
-                <div class="display-5 fw-bold text-warning">{{ pendentes }}</div>
+
+    <!-- Productivity Details Table & Recent Activity -->
+    <div class="row g-4">
+        <!-- Table Column -->
+        <div class="col-lg-8 col-md-12 animate-fade-in delay-3">
+            <div class="card glass-section-card h-100">
+                <div class="card-header-premium d-flex justify-content-between align-items-center">
+                    <div>
+                        <h5 class="fw-bold mb-0 text-dark font-outfit"><i class="bi bi-award text-warning me-2"></i>Detalhamento de Produtividade</h5>
+                        <p class="text-muted small mb-0">Estatísticas acumuladas de trabalho por colaborador</p>
+                    </div>
+                    <span class="badge bg-light text-dark px-3 py-2 border rounded-pill font-outfit" style="font-weight: 600;">Ranking</span>
+                </div>
+                <div class="card-body p-0">
+                    <div class="table-responsive">
+                        <table class="table table-hover table-premium align-middle mb-0">
+                            <thead>
+                                <tr>
+                                    <th class="ps-4 py-3">Colaborador</th>
+                                    <th class="text-center py-3">Matrículas Validadas</th>
+                                    <th class="text-center py-3">Atos no Mapa (ONR)</th>
+                                    <th class="text-center py-3">Ações Concluídas</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for user, stats in colaboradores.items() %}
+                                <tr>
+                                    <td class="ps-4">
+                                        <div class="d-flex align-items-center">
+                                            <div class="avatar-char-premium me-3 font-outfit">
+                                                {{ user[0]|upper }}
+                                            </div>
+                                            <div>
+                                                <span class="fw-bold text-dark font-outfit">{{ user }}</span>
+                                                <div class="text-muted small" style="font-size: 0.7rem;">Membro Ativo</div>
+                                            </div>
+                                        </div>
+                                    </td>
+                                    <td class="text-center">
+                                        <span class="badge bg-light text-dark border px-3 py-2" style="border-radius: 8px; font-weight: 500;">
+                                            <i class="bi bi-file-earmark-text text-secondary me-1"></i>{{ stats.geral }}
+                                        </span>
+                                    </td>
+                                    <td class="text-center">
+                                        <span class="badge bg-primary-subtle text-primary border border-primary-subtle px-3 py-2" style="border-radius: 8px; font-weight: 600;">
+                                            <i class="bi bi-map-fill text-primary me-1"></i>{{ stats.mapa }}
+                                        </span>
+                                    </td>
+                                    <td class="text-center">
+                                        {% set total_acoes = stats.geral + stats.mapa %}
+                                        <span class="fw-bold text-dark font-outfit">{{ total_acoes }}</span>
+                                    </td>
+                                </tr>
+                                {% else %}
+                                <tr>
+                                    <td colspan="4" class="text-center py-4 text-muted">Nenhum dado de produtividade disponível.</td>
+                                </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Recent Activity Timeline -->
+        <div class="col-lg-4 col-md-12 animate-fade-in delay-3">
+            <div class="card glass-section-card h-100">
+                <div class="card-header-premium">
+                    <h5 class="fw-bold mb-0 text-dark font-outfit"><i class="bi bi-activity text-primary me-2"></i>Últimas Validações</h5>
+                    <p class="text-muted small mb-0">Atos revisados recentemente no Mapa</p>
+                </div>
+                <div class="card-body p-4 pt-2">
+                    <div class="timeline-container">
+                        {% for item in recente %}
+                        <div class="timeline-premium-item">
+                            <div class="timeline-premium-dot"></div>
+                            <div class="d-flex justify-content-between align-items-start">
+                                <div>
+                                    <h6 class="fw-bold mb-1 text-dark font-outfit" style="font-size: 0.9rem;">Matrícula {{ item.numero_matricula }}</h6>
+                                    <p class="text-muted small mb-0" style="font-size: 0.75rem;">
+                                        <i class="bi bi-person me-1"></i>Revisor: <span class="fw-semibold">{{ item.concluded_by }}</span>
+                                    </p>
+                                </div>
+                                <span class="badge bg-light text-muted border px-2 py-1 font-outfit" style="font-size: 0.65rem; border-radius: 6px;">
+                                    {{ item.updated_at[:10] }}
+                                </span>
+                            </div>
+                        </div>
+                        {% else %}
+                        <div class="text-center py-5 text-muted small">
+                            <i class="bi bi-clock-history fs-2 text-black-50 d-block mb-2"></i>
+                            Nenhuma validação recente registrada.
+                        </div>
+                        {% endfor %}
+                    </div>
+                </div>
             </div>
         </div>
     </div>
 </div>
 
-<div class="alert alert-light border shadow-sm">
-    <h5 class="alert-heading"><i class="bi bi-bar-chart-fill"></i> Estatísticas Avançadas</h5>
-    <p class="mb-0">Funcionalidade de métricas de desempenho detalhadas será implementada em atualizações futuras,
-        utilizando logs de auditoria.</p>
-</div>
+<!-- Chart JS Scripting -->
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<script>
+    document.addEventListener("DOMContentLoaded", function() {
+        // Collect data from jinja context
+        const colabNames = [];
+        const colabGeral = [];
+        const colabMapa = [];
+        
+        {% for user, stats in colaboradores.items() %}
+        colabNames.push("{{ user }}");
+        colabGeral.push({{ stats.geral }});
+        colabMapa.push({{ stats.mapa }});
+        {% endfor %}
+
+        // 1. Produtividade Bar Chart
+        const ctxProd = document.getElementById('chartProdutividade').getContext('2d');
+        
+        // If there are no collaborators, put a placeholder
+        const chartLabels = colabNames.length > 0 ? colabNames : ['Sem Dados'];
+        const dataGeral = colabGeral.length > 0 ? colabGeral : [0];
+        const dataMapa = colabMapa.length > 0 ? colabMapa : [0];
+
+        new Chart(ctxProd, {
+            type: 'bar',
+            data: {
+                labels: chartLabels,
+                datasets: [
+                    {
+                        label: 'Matrículas Validadas',
+                        data: dataGeral,
+                        backgroundColor: '#3b82f6',
+                        borderColor: '#2563eb',
+                        borderWidth: 1,
+                        borderRadius: 6,
+                        barPercentage: 0.6,
+                        categoryPercentage: 0.7
+                    },
+                    {
+                        label: 'Atos no Mapa (ONR)',
+                        data: dataMapa,
+                        backgroundColor: '#8b5cf6',
+                        borderColor: '#7c3aed',
+                        borderWidth: 1,
+                        borderRadius: 6,
+                        barPercentage: 0.6,
+                        categoryPercentage: 0.7
+                    }
+                ]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: {
+                    legend: {
+                        position: 'top',
+                        labels: {
+                            boxWidth: 12,
+                            font: {
+                                family: "'Inter', sans-serif",
+                                size: 11
+                            },
+                            usePointStyle: true,
+                            pointStyle: 'rectRounded'
+                        }
+                    },
+                    tooltip: {
+                        padding: 12,
+                        backgroundColor: 'rgba(15, 23, 42, 0.9)',
+                        titleFont: {
+                            family: "'Outfit', sans-serif",
+                            weight: '600',
+                            size: 13
+                        },
+                        bodyFont: {
+                            family: "'Inter', sans-serif",
+                            size: 12
+                        },
+                        cornerRadius: 8
+                    }
+                },
+                scales: {
+                    x: {
+                        grid: {
+                            display: false
+                        },
+                        ticks: {
+                            font: {
+                                family: "'Inter', sans-serif",
+                                size: 11
+                            }
+                        }
+                    },
+                    y: {
+                        border: {
+                            dash: [4, 4]
+                        },
+                        grid: {
+                            color: 'rgba(0, 0, 0, 0.05)'
+                        },
+                        ticks: {
+                            precision: 0,
+                            font: {
+                                family: "'Inter', sans-serif",
+                                size: 11
+                            }
+                        }
+                    }
+                }
+            }
+        });
+
+        // 2. Conformidade Donut Chart
+        const ctxConf = document.getElementById('chartConformidade').getContext('2d');
+        const concluidos = {{ concluidos_mapa }};
+        const total = {{ total_atos }};
+        const pendentes = total > concluidos ? total - concluidos : 0;
+        
+        // Handle case where total is 0
+        const chartData = total > 0 ? [concluidos, pendentes] : [0, 1];
+        const chartColors = total > 0 ? ['#10b981', '#e2e8f0'] : ['#cbd5e1', '#cbd5e1'];
+
+        new Chart(ctxConf, {
+            type: 'doughnut',
+            data: {
+                labels: ['Validados', 'Pendentes'],
+                datasets: [{
+                    data: chartData,
+                    backgroundColor: chartColors,
+                    borderWidth: 2,
+                    borderColor: '#ffffff',
+                    hoverOffset: 4
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                cutout: '75%',
+                plugins: {
+                    legend: {
+                        display: false
+                    },
+                    tooltip: {
+                        enabled: total > 0,
+                        padding: 12,
+                        backgroundColor: 'rgba(15, 23, 42, 0.9)',
+                        callbacks: {
+                            label: function(context) {
+                                let label = context.label || '';
+                                if (label) {
+                                    label += ': ';
+                                }
+                                label += context.raw;
+                                return label;
+                            }
+                        }
+                    }
+                }
+            }
+        });
+    });
+</script>
 {% endblock %}

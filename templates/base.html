@@ -10,6 +10,7 @@
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
     <link href="{{ url_for('static', filename='style.css') }}" rel="stylesheet">
     <link href="https://cdn.jsdelivr.net/npm/tom-select@2.2.2/dist/css/tom-select.bootstrap5.min.css" rel="stylesheet">
+    <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
     {% if csrf_token %}
     <meta name="csrf-token" content="{{ csrf_token() }}">
     {% endif %}
@@ -30,8 +31,8 @@
                 <li class="nav-item">
                     <a href="{{ url_for('index') }}"
                         class="nav-link text-white {{ 'active' if request.endpoint == 'index' }}">
-                        <i class="bi bi-house-door"></i>
-                        Início
+                        <i class="bi bi-journal-text"></i>
+                        Indicador Real
                     </a>
                 </li>
 
@@ -60,6 +61,13 @@
                     </a>
                 </li>
                 <li>
+                    <a href="{{ url_for('chat_iago') }}"
+                        class="nav-link text-white {{ 'active' if request.endpoint == 'chat_iago' }}">
+                        <i class="bi bi-chat-dots"></i>
+                        Busca Inteligente IAGO
+                    </a>
+                </li>
+                <li>
                     <a href="{{ url_for('atualizacoes') }}"
                         class="nav-link text-white {{ 'active' if request.endpoint == 'atualizacoes' }}">
                         <i class="bi bi-cloud-arrow-down"></i>
@@ -76,10 +84,18 @@
                     </a>
                 </li>
                 <li>
+                <li>
                     <a href="{{ url_for('indicador_pessoal') }}"
                         class="nav-link text-white {{ 'active' if request.endpoint == 'indicador_pessoal' }}">
                         <i class="bi bi-person-vcard"></i>
                         Indicador Pessoal
+                    </a>
+                </li>
+                <li>
+                    <a href="{{ url_for('mapa') }}"
+                        class="nav-link text-white {{ 'active' if request.endpoint == 'mapa' }}">
+                        <i class="bi bi-map"></i>
+                        Mapa (ONR)
                     </a>
                 </li>
 
@@ -221,6 +237,125 @@
 
         </div>
     </div>
+
+    <!-- Chat IAGO Offcanvas -->
+    {% if current_user.is_authenticated and request.endpoint != 'chat_iago' %}
+    <button class="btn btn-primary rounded-circle shadow-lg position-fixed bottom-0 end-0 m-4 d-flex align-items-center justify-content-center" 
+            style="width: 60px; height: 60px; z-index: 1040; background-color: #6C5CE7; border: none; transition: transform 0.2s;"
+            onmouseover="this.style.transform='scale(1.1)'" onmouseout="this.style.transform='scale(1)'"
+            type="button" data-bs-toggle="offcanvas" data-bs-target="#offcanvasIago" aria-controls="offcanvasIago">
+        <i class="bi bi-chat-dots-fill fs-3 text-white"></i>
+    </button>
+
+    <div class="offcanvas offcanvas-end" tabindex="-1" id="offcanvasIago" aria-labelledby="offcanvasIagoLabel" style="width: 450px; border-left: 1px solid #dee2e6; box-shadow: -5px 0 15px rgba(0,0,0,0.05);">
+        <div class="offcanvas-header bg-white border-bottom">
+            <h5 class="offcanvas-title fw-bold d-flex align-items-center gap-2" id="offcanvasIagoLabel" style="color: #6C5CE7;">
+                <i class="bi bi-robot fs-4"></i> Busca Inteligente IAGO
+            </h5>
+            <button type="button" class="btn-close" data-bs-dismiss="offcanvas" aria-label="Close"></button>
+        </div>
+        <div class="offcanvas-body d-flex flex-column p-0" style="background-color: #F8F9FA;">
+            <div id="iagoChatMessages" class="flex-grow-1 p-4 overflow-auto d-flex flex-column gap-3" style="scrollbar-width: thin;">
+                <div class="d-flex w-100">
+                    <div class="bg-white p-3 rounded-4 shadow-sm" style="max-width: 85%; border-left: 4px solid #6C5CE7;">
+                        <strong>IAGO:</strong> Olá! Sou o assistente de IA do cartório.<br>Diga-me o CPF, Nome ou Endereço que deseja buscar no acervo!
+                    </div>
+                </div>
+            </div>
+            <div class="p-3 bg-white border-top">
+                <form id="iagoChatForm" class="d-flex gap-2">
+                    <input type="text" id="iagoChatInput" class="form-control rounded-pill border-light" style="background-color: #f1f3f5;" placeholder="Digite aqui..." required>
+                    <button type="submit" class="btn btn-primary rounded-circle d-flex align-items-center justify-content-center shadow-sm flex-shrink-0" style="width: 45px; height: 45px; background-color: #6C5CE7; border: none;">
+                        <i class="bi bi-send-fill"></i>
+                    </button>
+                </form>
+            </div>
+        </div>
+    </div>
+    
+    <script>
+        if (typeof window.iagoChatHistory === 'undefined') {
+            window.iagoChatHistory = [];
+        }
+        document.addEventListener('DOMContentLoaded', function() {
+            const chatForm = document.getElementById('iagoChatForm');
+            if(chatForm) {
+                chatForm.addEventListener('submit', function(e) {
+                    e.preventDefault();
+                    const input = document.getElementById('iagoChatInput');
+                    const msg = input.value.trim();
+                    if(!msg) return;
+                    
+                    const chatContainer = document.getElementById('iagoChatMessages');
+                    
+                    window.iagoChatHistory.push({role: 'user', content: msg});
+                    
+                    // Add User Message
+                    chatContainer.innerHTML += `
+                        <div class="d-flex w-100 justify-content-end">
+                            <div class="p-3 rounded-4 shadow-sm text-white" style="background-color: #6C5CE7; max-width: 85%;">
+                                ${msg}
+                            </div>
+                        </div>
+                    `;
+                    input.value = '';
+                    chatContainer.scrollTop = chatContainer.scrollHeight;
+                    
+                    // Add Loading
+                    const loadingId = 'loading-' + Date.now();
+                    chatContainer.innerHTML += `
+                        <div id="${loadingId}" class="d-flex w-100 animate-fade-in">
+                            <div class="bg-white p-3 rounded-4 shadow-sm text-muted d-flex align-items-center gap-2" style="max-width: 85%; border-left: 4px solid #ccc;">
+                                <div class="spinner-border spinner-border-sm text-primary" role="status"></div> Pesquisando no acervo...
+                            </div>
+                        </div>
+                    `;
+                    chatContainer.scrollTop = chatContainer.scrollHeight;
+                    
+                    fetch('/api/chat', {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                            'X-CSRFToken': document.querySelector('meta[name="csrf-token"]').content
+                        },
+                        body: JSON.stringify({message: msg, history: window.iagoChatHistory})
+                    })
+                    .then(r => r.json())
+                    .then(data => {
+                        const el = document.getElementById(loadingId);
+                        if(el) el.remove();
+                        
+                        const reply = data.reply || data.error || 'Erro desconhecido';
+                        window.iagoChatHistory.push({role: 'assistant', content: reply});
+                        
+                        const formattedReply = reply.replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>').replace(/\n/g, '<br>');
+                        
+                        chatContainer.innerHTML += `
+                            <div class="d-flex w-100 animate-fade-in">
+                                <div class="bg-white p-3 rounded-4 shadow-sm" style="max-width: 85%; border-left: 4px solid #6C5CE7;">
+                                    <strong>IAGO:</strong><br>${formattedReply}
+                                </div>
+                            </div>
+                        `;
+                        chatContainer.scrollTop = chatContainer.scrollHeight;
+                    })
+                    .catch(err => {
+                        const el = document.getElementById(loadingId);
+                        if(el) el.remove();
+                        chatContainer.innerHTML += `
+                            <div class="d-flex w-100">
+                                <div class="bg-danger text-white p-3 rounded-4 shadow-sm" style="max-width: 85%;">
+                                    Erro de comunicação com o servidor. Tente novamente.
+                                </div>
+                            </div>
+                        `;
+                        chatContainer.scrollTop = chatContainer.scrollHeight;
+                    });
+                });
+            }
+        });
+    </script>
+    {% endif %}
 
     <!-- Overlay -->
     <div class="position-fixed top-0 start-0 w-100 h-100 bg-dark opacity-50 d-none d-md-none" id="sidebarOverlay"

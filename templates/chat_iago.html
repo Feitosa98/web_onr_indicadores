@@ -1,0 +1,150 @@
+{% extends 'base.html' %}
+{% block conteudo %}
+<div class="d-flex flex-column h-100 animate-fade-in" style="min-height: calc(100vh - 120px);">
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <div>
+            <h4 class="fw-bold mb-1" style="color: #6C5CE7;">
+                <i class="bi bi-robot me-2"></i>Busca Inteligente IAGO
+            </h4>
+            <p class="text-muted mb-0">Seu assistente virtual para consultar matrículas, pessoas e endereços.</p>
+        </div>
+    </div>
+
+    <div class="card border-0 shadow-sm flex-grow-1 d-flex flex-column" style="border-radius: 1rem; overflow: hidden;">
+        <div id="fullChatMessages" class="card-body overflow-auto d-flex flex-column gap-3" style="background-color: #F8F9FA; padding: 2rem;">
+            <div class="d-flex w-100">
+                <div class="bg-white p-4 shadow-sm" style="max-width: 75%; border-left: 4px solid #6C5CE7; border-radius: 0 1rem 1rem 1rem;">
+                    <strong>IAGO:</strong><br>
+                    <span id="typing-greeting-full"></span><span id="cursor-full" style="animation: blink 1s infinite;">|</span>
+                    <div id="greeting-options-full" style="display:none; margin-top:15px;">
+                        Você pode me perguntar coisas como:<br>
+                        <ul>
+                            <li><em>"Qual é a matrícula do João da Silva?"</em></li>
+                            <li><em>"Busque o CPF 123.456.789-00"</em></li>
+                            <li><em>"Encontre imóveis na Rua das Flores"</em></li>
+                        </ul>
+                        Como posso te ajudar hoje?
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        <div class="card-footer bg-white border-top p-4">
+            <form id="fullChatForm" class="d-flex gap-3">
+                <input type="text" id="fullChatInput" class="form-control form-control-lg border-light" style="background-color: #f1f3f5; border-radius: 2rem;" placeholder="Digite o que deseja buscar..." required>
+                <button type="submit" class="btn btn-primary d-flex align-items-center justify-content-center shadow-sm px-4" style="border-radius: 2rem; background-color: #6C5CE7; border: none;">
+                    <i class="bi bi-send-fill me-2"></i> Enviar
+                </button>
+            </form>
+        </div>
+    </div>
+</div>
+
+<style>
+@keyframes blink { 0% { opacity: 1; } 50% { opacity: 0; } 100% { opacity: 1; } }
+</style>
+<script>
+    if (typeof window.iagoChatHistory === 'undefined') {
+        window.iagoChatHistory = [];
+    }
+document.addEventListener('DOMContentLoaded', function() {
+    // Typewriter effect
+    const hour = new Date().getHours();
+    let greeting = "Bom dia";
+    if(hour >= 12 && hour < 18) greeting = "Boa tarde";
+    else if(hour >= 18) greeting = "Boa noite";
+    
+    const textToType = greeting + "! Sou o IAGO, seu assistente inteligente. Estou pronto para ajudar você a explorar nosso acervo com velocidade e precisão.";
+    let i = 0;
+    function typeWriter() {
+        if (i < textToType.length) {
+            document.getElementById("typing-greeting-full").innerHTML += textToType.charAt(i);
+            i++;
+            setTimeout(typeWriter, 25);
+        } else {
+            document.getElementById("cursor-full").style.display = "none";
+            document.getElementById("greeting-options-full").style.display = "block";
+            document.getElementById("greeting-options-full").classList.add("animate-fade-in");
+        }
+    }
+    setTimeout(typeWriter, 500);
+
+    const chatForm = document.getElementById('fullChatForm');
+    if(chatForm) {
+        chatForm.addEventListener('submit', function(e) {
+            e.preventDefault();
+            const input = document.getElementById('fullChatInput');
+            const msg = input.value.trim();
+            if(!msg) return;
+            
+            const chatContainer = document.getElementById('fullChatMessages');
+            
+            window.iagoChatHistory.push({role: 'user', content: msg});
+            
+            // Add User Message
+            chatContainer.innerHTML += `
+                <div class="d-flex w-100 justify-content-end animate-fade-in">
+                    <div class="p-4 shadow-sm text-white" style="background-color: #6C5CE7; max-width: 75%; border-radius: 1rem 0 1rem 1rem;">
+                        ${msg}
+                    </div>
+                </div>
+            `;
+            input.value = '';
+            chatContainer.scrollTop = chatContainer.scrollHeight;
+            
+            // Add Loading
+            const loadingId = 'loading-full-' + Date.now();
+            chatContainer.innerHTML += `
+                <div id="${loadingId}" class="d-flex w-100 animate-fade-in">
+                    <div class="bg-white p-4 shadow-sm text-muted d-flex align-items-center gap-3" style="max-width: 75%; border-left: 4px solid #ccc; border-radius: 0 1rem 1rem 1rem;">
+                        <div class="spinner-border text-primary" role="status"></div> 
+                        <span>IAGO está pesquisando no acervo, um momento...</span>
+                    </div>
+                </div>
+            `;
+            chatContainer.scrollTop = chatContainer.scrollHeight;
+            
+            fetch('/api/chat', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-CSRFToken': document.querySelector('meta[name="csrf-token"]').content
+                },
+                body: JSON.stringify({message: msg, history: window.iagoChatHistory})
+            })
+            .then(r => r.json())
+            .then(data => {
+                const el = document.getElementById(loadingId);
+                if(el) el.remove();
+                
+                const reply = data.reply || data.error || 'Erro desconhecido';
+                window.iagoChatHistory.push({role: 'assistant', content: reply});
+                
+                const formattedReply = reply.replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>').replace(/\n/g, '<br>');
+                
+                chatContainer.innerHTML += `
+                    <div class="d-flex w-100 animate-fade-in">
+                        <div class="bg-white p-4 shadow-sm" style="max-width: 75%; border-left: 4px solid #6C5CE7; border-radius: 0 1rem 1rem 1rem;">
+                            <strong>IAGO:</strong><br><br>${formattedReply}
+                        </div>
+                    </div>
+                `;
+                chatContainer.scrollTop = chatContainer.scrollHeight;
+            })
+            .catch(err => {
+                const el = document.getElementById(loadingId);
+                if(el) el.remove();
+                chatContainer.innerHTML += `
+                    <div class="d-flex w-100">
+                        <div class="bg-danger text-white p-4 shadow-sm" style="max-width: 75%; border-radius: 0 1rem 1rem 1rem;">
+                            Erro de comunicação com o servidor. Tente novamente.
+                        </div>
+                    </div>
+                `;
+                chatContainer.scrollTop = chatContainer.scrollHeight;
+            });
+        });
+    }
+});
+</script>
+{% endblock %}

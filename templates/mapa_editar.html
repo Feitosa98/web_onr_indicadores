@@ -1,0 +1,596 @@
+{% extends "base.html" %}
+{% block conteudo %}
+<div class="d-flex justify-content-between align-items-center mb-4">
+    <div>
+        <h2 class="fw-bold text-primary mb-0">Editar Ato (Mapa - ITN 03/2025)</h2>
+        <p class="text-muted small mb-0">Matrícula: <strong>{{ ato.numero_matricula }}</strong> | CNS: <strong>{{ session.get('cns', '123456') }}</strong></p>
+    </div>
+    <div class="btn-group">
+        <button type="button" class="btn btn-info text-white shadow-sm" onclick="visualizarImovel({{ ato.imovel_id }})">
+            <i class="bi bi-file-earmark-text"></i> Ver Imagem
+        </button>
+        <a href="{{ url_for('mapa') }}" class="btn btn-outline-secondary shadow-sm">
+            <i class="bi bi-arrow-left"></i> Voltar
+        </a>
+    </div>
+</div>
+
+<form method="POST" class="row g-4">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    
+    <!-- Seção 1: Controle e Motivo -->
+    <div class="col-12">
+        <div class="card border-0 shadow-sm overflow-hidden">
+            <div class="card-header bg-dark text-white py-3">
+                <h5 class="card-title mb-0"><i class="bi bi-send me-2"></i>Controle de Envio (ONR)</h5>
+            </div>
+            <div class="card-body p-4 bg-light">
+                <div class="row g-3">
+                    <div class="col-md-6">
+                        <label class="form-label fw-bold small text-uppercase">Motivo do Envio</label>
+                        <select class="form-select form-select-lg border-primary shadow-none" name="motivo_envio">
+                            <option value="1" {{ 'selected' if ato.motivo_envio == 1 }}>1 - Envio de dados estruturados</option>
+                            <option value="2" {{ 'selected' if ato.motivo_envio == 2 }}>2 - Retificação de dados anteriormente enviados</option>
+                            <option value="3" {{ 'selected' if ato.motivo_envio == 3 }}>3 - Carga Inicial</option>
+                        </select>
+                    </div>
+                    <div class="col-md-6">
+                        <label class="form-label fw-bold small text-uppercase">Georreferenciamento</label>
+                        <div class="form-check form-switch mt-2">
+                            <input class="form-check-input" type="checkbox" name="georreferenciamento" id="geoRef" value="1" {{ 'checked' if ato.georreferenciamento }} style="width: 2.5rem; height: 1.25rem;">
+                            <label class="form-check-label ms-2" for="geoRef">Imóvel Georreferenciado</label>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Seção 2: Identificação do Registro -->
+    <div class="col-12">
+        <div class="card border-0 shadow-sm overflow-hidden">
+            <div class="card-header bg-primary text-white py-3">
+                <h5 class="card-title mb-0"><i class="bi bi-card-text me-2"></i>Identificação do Registro / Matrícula</h5>
+            </div>
+            <div class="card-body p-4">
+                <div class="row g-3">
+                    <div class="col-md-3">
+                        <label class="form-label fw-semibold text-muted small text-uppercase">Tipo Registro</label>
+                        <select class="form-select" name="tipo_matricula_transcricao" id="tipoReg">
+                            <option value="1" {{ 'selected' if ato.tipo_matricula_transcricao == 1 }}>1 - Matrícula</option>
+                            <option value="2" {{ 'selected' if ato.tipo_matricula_transcricao == 2 }}>2 - Transcrição</option>
+                        </select>
+                    </div>
+                    <div class="col-md-3">
+                        <label class="form-label fw-semibold text-muted small text-uppercase">Número</label>
+                        <input type="text" class="form-control" name="numero_matricula" value="{{ ato.numero_matricula or '' }}">
+                    </div>
+                    <div class="col-md-2">
+                        <label class="form-label fw-semibold text-muted small text-uppercase">Livro</label>
+                        <input type="text" class="form-control" name="livro_matricula" value="{{ ato.livro_matricula or '' }}">
+                    </div>
+                    <div class="col-md-2">
+                        <label class="form-label fw-semibold text-muted small text-uppercase">Folha</label>
+                        <input type="text" class="form-control" name="folha_matricula" value="{{ ato.folha_matricula or '' }}">
+                    </div>
+                    <div class="col-md-2">
+                        <label class="form-label fw-semibold text-muted small text-uppercase">Número Ordem</label>
+                        <input type="text" class="form-control" name="numero_ordem_transcricao" value="{{ ato.numero_ordem_transcricao or '' }}">
+                    </div>
+                    <div class="col-md-12">
+                        <label class="form-label fw-semibold text-muted small text-uppercase">CNM (Obrigatório se Matrícula)</label>
+                        <input type="text" class="form-control" name="cnm" value="{{ ato.cnm or '' }}" placeholder="Ex: 123456.2.00380001-00">
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Seção 3: Protocolo e Ato -->
+    <div class="col-12">
+        <div class="card border-0 shadow-sm overflow-hidden">
+            <div class="card-header bg-info text-white py-3">
+                <h5 class="card-title mb-0"><i class="bi bi-info-circle me-2"></i>Protocolo e Classificação do Ato</h5>
+            </div>
+            <div class="card-body p-4">
+                <div class="row g-3">
+                    <div class="col-md-4">
+                        <label class="form-label fw-semibold text-muted small text-uppercase">Protocolo Prenotação</label>
+                        <input type="text" class="form-control" name="protocolo" value="{{ ato.protocolo_prenotacao or '' }}">
+                    </div>
+                    <div class="col-md-4">
+                        <label class="form-label fw-semibold text-muted small text-uppercase">Data Protocolo</label>
+                        <input type="text" class="form-control" name="data_protocolo" value="{{ ato.data_protocolo_prenotacao or '' }}" placeholder="DD/MM/YYYY">
+                    </div>
+                    <div class="col-md-4">
+                        <label class="form-label fw-semibold text-muted small text-uppercase">Tipo Ato</label>
+                        <select class="form-select" name="tipo_ato">
+                            <option value="1" {{ 'selected' if ato.tipo_ato == 1 }}>1 - Registro</option>
+                            <option value="2" {{ 'selected' if ato.tipo_ato == 2 }}>2 - Averbação</option>
+                        </select>
+                    </div>
+                    <div class="col-md-4">
+                        <label class="form-label fw-semibold text-muted small text-uppercase">Número do Ato</label>
+                        <input type="number" class="form-control" name="numero_ato" value="{{ ato.numero_ato or 0 }}">
+                    </div>
+                    <div class="col-md-4">
+                        <label class="form-label fw-semibold text-muted small text-uppercase">Código Ato (ITN 03)</label>
+                        <select class="form-select" name="ato_cod">
+                            <option value="1" {{ 'selected' if ato.ato == 1 }}>1 - Abertura de matrícula</option>
+                            <option value="2" {{ 'selected' if ato.ato == 2 }}>2 - Alteração da relação jurídica</option>
+                            <option value="3" {{ 'selected' if ato.ato == 3 }}>3 - Transmissão ou Aquisição Originária</option>
+                            <option value="4" {{ 'selected' if ato.ato == 4 }}>4 - Alteração do imóvel</option>
+                            <option value="5" {{ 'selected' if ato.ato == 5 }}>5 - Outros</option>
+                        </select>
+                    </div>
+                    <div class="col-md-4">
+                        <label class="form-label fw-semibold text-muted small text-uppercase">Alt. Titularidade / Imóvel</label>
+                        <div class="input-group">
+                            <span class="input-group-text">Tit.</span>
+                            <input type="number" class="form-control" name="alteracao_titulariedade" value="{{ ato.alteracao_titulariedade or 0 }}">
+                            <span class="input-group-text">Imov.</span>
+                            <input type="number" class="form-control" name="alteracao_imovel" value="{{ ato.alteracao_imovel or 0 }}">
+                        </div>
+                    </div>
+                </div>
+                <div class="row g-3 mt-2">
+                    <div class="col-md-6">
+                        <label class="form-label fw-semibold text-muted small text-uppercase">Valor Transação (R$)</label>
+                        <input type="number" step="0.01" class="form-control" name="valor_transacao" value="{{ ato.valor_transacao or 0.0 }}">
+                    </div>
+                    <div class="col-md-6">
+                        <label class="form-label fw-semibold text-muted small text-uppercase">Valor Imposto (R$)</label>
+                        <input type="number" step="0.01" class="form-control" name="valor_imposto" value="{{ ato.valor_imposto or 0.0 }}">
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Seção 4: Contexto Rural / Urbano -->
+    <div class="col-12">
+        <div class="card border-0 shadow-sm overflow-hidden">
+            <div class="card-header bg-secondary text-white py-3">
+                <h5 class="card-title mb-0"><i class="bi bi-geo-alt me-2"></i>Dados Técnicos do Imóvel (ITN 03)</h5>
+            </div>
+            <div class="card-body p-4">
+                <div class="row g-3">
+                    <div class="col-md-4">
+                        <label class="form-label fw-semibold text-muted small text-uppercase">Contexto do Ato</label>
+                        <select class="form-select" name="contexto" title="Contexto específico conforme ITN 03">
+                            <option value="1" {{ 'selected' if ato.contexto == 1 }}>1 - Padrão / Comum</option>
+                            <option value="2" {{ 'selected' if ato.contexto == 2 }}>2 - Imóvel da União (SPU)</option>
+                            <option value="3" {{ 'selected' if ato.contexto == 3 }}>3 - Aquisição por Estrangeiro</option>
+                            <option value="4" {{ 'selected' if ato.contexto == 4 }}>4 - Outros</option>
+                        </select>
+                    </div>
+                    <div class="col-md-4">
+                        <label class="form-label fw-semibold text-muted small text-uppercase">Área (Valor)</label>
+                        <input type="number" step="0.0001" class="form-control" name="area_m2" value="{{ ato.area_m2 or 0.0 }}" title="Valor da área constante no título/matrícula">
+                    </div>
+                    <div class="col-md-4">
+                        <label class="form-label fw-semibold text-muted small text-uppercase">Unidade Área</label>
+                        <select class="form-select" name="unidade_area" title="Selecione a unidade de medida">
+                            <option value="1" {{ 'selected' if ato.unidade_area == 1 }}>1 - m² (Metros Quadrados)</option>
+                            <option value="2" {{ 'selected' if ato.unidade_area == 2 }}>2 - ha (Hectares)</option>
+                        </select>
+                    </div>
+                </div>
+
+                <!-- Campos Específicos para RURAL -->
+                <div id="campos_rurais" class="{{ 'd-none' if ato.imovel_tipo != 2 }}">
+                    <div class="row g-4 mt-1">
+                        <div class="col-md-4">
+                            <label class="form-label fw-semibold text-muted small text-uppercase">CIB / NIRF</label>
+                            <input type="text" class="form-control" name="cib" value="{{ ato.cib or '' }}" placeholder="Número CIB/NIRF">
+                        </div>
+                        <div class="col-md-4">
+                            <label class="form-label fw-semibold text-muted small text-uppercase">CCIR / SNCR</label>
+                            <input type="text" class="form-control" name="ccir_sncr" value="{{ ato.ccir_sncr or '' }}" placeholder="000.000.000.000-0">
+                        </div>
+                        <div class="col-md-4">
+                            <label class="form-label fw-semibold text-muted small text-uppercase">CAR</label>
+                            <input type="text" class="form-control" name="car" value="{{ ato.car or '' }}" placeholder="UF-0000000-...">
+                        </div>
+                    </div>
+                    <div class="row g-4 mt-1">
+                        <div class="col-md-4">
+                            <label class="form-label fw-semibold text-muted small text-uppercase">Código INCRA / SIGEF</label>
+                            <input type="text" class="form-control" name="codigo_incra" value="{{ ato.codigo_incra or '' }}" placeholder="Ex: SIGEF-12345...">
+                        </div>
+                        <div class="col-md-8">
+                            <div class="d-flex flex-wrap gap-4 mt-4">
+                                <div class="form-check form-switch" title="Possui autorização do INCRA para aquisição?">
+                                    <input class="form-check-input" type="checkbox" name="autorizacao_incra" id="authIncra" value="1" {{ 'checked' if ato.autorizacao_incra }}>
+                                    <label class="form-check-label" for="authIncra">Aut. INCRA</label>
+                                </div>
+                                <div class="form-check form-switch" title="Imóvel possui certificação no SIGEF?">
+                                    <input class="form-check-input" type="checkbox" name="certificacao_incra" id="certIncra" value="1" {{ 'checked' if ato.certificacao_incra }}>
+                                    <label class="form-check-label" for="certIncra">Certificação INCRA</label>
+                                </div>
+                                <div class="form-check form-switch" title="Imóvel localizado em faixa de fronteira?">
+                                    <input class="form-check-input" type="checkbox" name="faixa_fronteira" id="faixaFront" value="1" {{ 'checked' if ato.faixa_fronteira }}>
+                                    <label class="form-check-label" for="faixaFront">Faixa Fronteira</label>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Campos Específicos para URBANO -->
+                <div id="campos_urbanos" class="{{ 'd-none' if ato.imovel_tipo != 1 }}">
+                    <div class="row g-4 mt-1">
+                        <div class="col-md-6">
+                            <label class="form-label fw-semibold text-muted small text-uppercase">Inscrição Municipal / Contribuinte</label>
+                            <input type="text" class="form-control" name="inscricao_urbana" value="{{ ato.cib or '' }}" placeholder="Ex: 01.02.0003.004">
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label fw-semibold text-muted small text-uppercase">Bairro</label>
+                            <input type="text" class="form-control" name="bairro_urbano" value="{{ ato.bairro or '' }}" placeholder="Nome do Bairro">
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Seção 5: Partes e Pessoas (Granular) -->
+    <div class="col-12">
+        <div class="card border-0 shadow-sm overflow-hidden">
+            <div class="card-header bg-dark text-white py-3 d-flex justify-content-between align-items-center">
+                <h5 class="card-title mb-0"><i class="bi bi-people me-2"></i>Pessoas Relacionadas (Partes)</h5>
+                <button type="button" class="btn btn-sm btn-outline-light" onclick="addParteRow()">
+                    <i class="bi bi-plus-circle me-1"></i> Adicionar Parte
+                </button>
+            </div>
+            <div class="card-body p-4 bg-light" id="partesContainer">
+                {% for p in partes %}
+                <div class="party-card bg-white border rounded-3 p-3 mb-3 shadow-sm" id="parte_row_{{ loop.index0 }}">
+                    <div class="d-flex justify-content-between align-items-start mb-3 border-bottom pb-2">
+                        <div class="d-flex align-items-center gap-3 flex-grow-1">
+                            <span class="badge bg-primary rounded-pill">{{ loop.index }}</span>
+                            <div class="flex-grow-1">
+                                <input type="text" class="form-control form-control-lg fw-bold border-0 bg-transparent p-0" name="parte_nome_{{ loop.index0 }}" value="{{ p.nome_completo }}" placeholder="Nome Completo">
+                                <input type="text" class="form-control form-control-sm border-0 bg-transparent p-0 text-muted" name="parte_cpf_{{ loop.index0 }}" value="{{ p.cpf_cnpj or '' }}" placeholder="CPF ou CNPJ">
+                            </div>
+                        </div>
+                        <button type="button" class="btn btn-outline-danger btn-sm border-0" onclick="removePartyCard({{ loop.index0 }})">
+                            <i class="bi bi-trash"></i>
+                        </button>
+                    </div>
+                    
+                    <div class="row g-3">
+                        <!-- Grupo: Identificação Básica -->
+                        <div class="col-md-4 border-end">
+                            <label class="form-label small fw-bold text-muted text-uppercase" title="Informe se a pessoa é brasileira ou estrangeira e o gênero">Cidadania e Gênero <i class="bi bi-question-circle small"></i></label>
+                            <div class="row g-2">
+                                <div class="col-12">
+                                    <select class="form-select form-select-sm" name="parte_estrangeiro_{{ loop.index0 }}" onchange="toggleEstrangeiro(this, {{ loop.index0 }})" title="Selecione 'Estrangeiro' para abrir campos de documentos internacionais">
+                                        <option value="0" {{ 'selected' if not p.estrangeiro }}>Brasileiro</option>
+                                        <option value="1" {{ 'selected' if p.estrangeiro }}>Estrangeiro</option>
+                                    </select>
+                                </div>
+                                <div class="col-8">
+                                    <select class="form-select form-select-sm" name="parte_nacionalidade_{{ loop.index0 }}" title="Selecione o país de nacionalidade">
+                                        <option value="76" {{ 'selected' if p.nacionalidade == 76 or not p.nacionalidade }}>Brasil</option>
+                                        <option value="32" {{ 'selected' if p.nacionalidade == 32 }}>Argentina</option>
+                                        <option value="586" {{ 'selected' if p.nacionalidade == 586 }}>Paraguai</option>
+                                        <option value="858" {{ 'selected' if p.nacionalidade == 858 }}>Uruguai</option>
+                                        <option value="152" {{ 'selected' if p.nacionalidade == 152 }}>Chile</option>
+                                        <option value="862" {{ 'selected' if p.nacionalidade == 862 }}>Venezuela</option>
+                                        <option value="604" {{ 'selected' if p.nacionalidade == 604 }}>Peru</option>
+                                        <option value="170" {{ 'selected' if p.nacionalidade == 170 }}>Colômbia</option>
+                                        <option value="105" {{ 'selected' if p.nacionalidade == 105 }}>Bolívia</option>
+                                        <option value="620" {{ 'selected' if p.nacionalidade == 620 }}>Portugal</option>
+                                        <option value="380" {{ 'selected' if p.nacionalidade == 380 }}>Itália</option>
+                                        <option value="724" {{ 'selected' if p.nacionalidade == 724 }}>Espanha</option>
+                                        <option value="276" {{ 'selected' if p.nacionalidade == 276 }}>Alemanha</option>
+                                        <option value="840" {{ 'selected' if p.nacionalidade == 840 }}>EUA</option>
+                                        <option value="392" {{ 'selected' if p.nacionalidade == 392 }}>Japão</option>
+                                        <option value="156" {{ 'selected' if p.nacionalidade == 156 }}>China</option>
+                                        <option value="999" {{ 'selected' if p.nacionalidade == 999 }}>Outros</option>
+                                    </select>
+                                </div>
+                                <div class="col-4">
+                                    <select class="form-select form-select-sm" name="parte_genero_{{ loop.index0 }}" title="Gênero conforme registro oficial">
+                                        <option value="1" {{ 'selected' if p.genero == 1 }}>Masc.</option>
+                                        <option value="2" {{ 'selected' if p.genero == 2 }}>Fem.</option>
+                                    </select>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Grupo: Estrangeiros / Docs -->
+                        <div class="col-md-4 border-end {{ 'd-none' if not p.estrangeiro }}" id="docs_estrangeiro_{{ loop.index0 }}">
+                            <label class="form-label small fw-bold text-muted text-uppercase" title="Documentação obrigatória para estrangeiros conforme ITN 03">Documentos Estrangeiros <i class="bi bi-passport small"></i></label>
+                            <div class="row g-2">
+                                <div class="col-6">
+                                    <input type="text" class="form-control form-control-sm" name="parte_rnm_{{ loop.index0 }}" value="{{ p.rnm or '' }}" placeholder="RNM" title="Registro Nacional Migratório">
+                                </div>
+                                <div class="col-6">
+                                    <input type="text" class="form-control form-control-sm" name="parte_passaporte_{{ loop.index0 }}" value="{{ p.passaporte or '' }}" placeholder="Passaporte" title="Número do Passaporte">
+                                </div>
+                                <div class="col-12">
+                                    <div class="form-check form-switch small mt-1">
+                                        <input class="form-check-input" type="checkbox" name="parte_filhos_{{ loop.index0 }}" value="1" {{ 'checked' if p.filhos_brasileiros }} title="Marque se o estrangeiro possui prole brasileira">
+                                        <label class="form-check-label">Possui filhos brasileiros</label>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Grupo: Estado Civil -->
+                        <div class="col-md-4">
+                            <label class="form-label small fw-bold text-muted text-uppercase" title="Dados de união e separação de bens">Estado Civil e Regime <i class="bi bi-heart small"></i></label>
+                            <div class="row g-2">
+                                <div class="col-12">
+                                    <select class="form-select form-select-sm" name="parte_estado_civil_{{ loop.index0 }}" title="Estado civil no momento do registro">
+                                        <option value="1" {{ 'selected' if p.estado_civil == 1 }}>Solteiro(a)</option>
+                                        <option value="2" {{ 'selected' if p.estado_civil == 2 }}>Casado(a)</option>
+                                        <option value="3" {{ 'selected' if p.estado_civil == 3 }}>União Estável</option>
+                                        <option value="4" {{ 'selected' if p.estado_civil == 4 }}>Divorciado(a)</option>
+                                        <option value="5" {{ 'selected' if p.estado_civil == 5 }}>Viúvo(a)</option>
+                                    </select>
+                                </div>
+                                <div class="col-12">
+                                    <select class="form-select form-select-sm" name="parte_regime_{{ loop.index0 }}" title="Regime de bens (obrigatório se casado ou união estável)">
+                                        <option value="0" {{ 'selected' if not p.regime_bens }}>Não se aplica</option>
+                                        <option value="1" {{ 'selected' if p.regime_bens == 1 }}>1 - Comunhão Parcial</option>
+                                        <option value="2" {{ 'selected' if p.regime_bens == 2 }}>2 - Comunhão Universal</option>
+                                        <option value="3" {{ 'selected' if p.regime_bens == 3 }}>3 - Separação Total</option>
+                                        <option value="4" {{ 'selected' if p.regime_bens == 4 }}>4 - Participação Final nos Aquestos</option>
+                                    </select>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="row g-3 mt-1 pt-3 border-top">
+                        <!-- Grupo: Papel no Ato -->
+                        <div class="col-md-4">
+                            <label class="form-label small fw-bold text-primary text-uppercase" title="Tipo de direito que a pessoa possui sobre o imóvel">Relação Jurídica <i class="bi bi-link-45deg small"></i></label>
+                            <select class="form-select form-select-sm border-primary shadow-none" name="parte_relacao_{{ loop.index0 }}" title="Proprietário, Usufrutuário, Credor, etc.">
+                                <option value="1" {{ 'selected' if p.relacao_juridica == 1 }}>1 - Proprietário / Titular</option>
+                                <option value="2" {{ 'selected' if p.relacao_juridica == 2 }}>2 - Usufrutuário</option>
+                                <option value="3" {{ 'selected' if p.relacao_juridica == 3 }}>3 - Credor</option>
+                                <option value="4" {{ 'selected' if p.relacao_juridica == 4 }}>4 - Outros</option>
+                            </select>
+                        </div>
+                        <div class="col-md-4">
+                            <label class="form-label small fw-bold text-primary text-uppercase" title="Papel que a pessoa desempenha neste ato específico">Condição da Parte <i class="bi bi-arrow-left-right small"></i></label>
+                            <select class="form-select form-select-sm border-primary shadow-none" name="parte_condicao_{{ loop.index0 }}" title="Transmitente (quem vende/dá) ou Adquirente (quem compra/recebe)">
+                                <option value="1" {{ 'selected' if p.condicao_parte == 1 }}>1 - Transmitente / Outorgante</option>
+                                <option value="2" {{ 'selected' if p.condicao_parte == 2 }}>2 - Adquirente / Outorgado</option>
+                                <option value="3" {{ 'selected' if p.condicao_parte == 3 }}>3 - Ambos (Ex: Permuta)</option>
+                            </select>
+                        </div>
+                        <div class="col-md-4">
+                            <label class="form-label small fw-bold text-primary text-uppercase" title="Porcentagem de participação no direito/imóvel">Porcentagem (%) <i class="bi bi-percent small"></i></label>
+                            <div class="input-group input-group-sm">
+                                <input type="number" step="0.01" class="form-control border-primary shadow-none fw-bold" name="parte_percentual_{{ loop.index0 }}" value="{{ p.percentual or 100.0 }}" title="Valor decimal (ex: 50.00)">
+                                <span class="input-group-text bg-primary text-white border-primary">%</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                {% endfor %}
+            </div>
+            <div class="card-footer bg-white py-3 border-0">
+                <div class="d-flex justify-content-between align-items-center">
+                    <div class="small text-muted">Total de Partes: <span id="totalPartes" class="fw-bold text-dark">{{ partes|length }}</span></div>
+                    <div class="px-3 py-2 rounded-pill bg-light border d-flex align-items-center gap-3">
+                        <span class="small fw-bold text-muted text-uppercase">Soma das Porcentagens:</span>
+                        <div class="d-flex align-items-center gap-2">
+                            <span id="percTotal" class="h5 mb-0 fw-bold text-primary">0.00%</span>
+                            <i id="percStatus" class="bi bi-check-circle-fill text-success d-none"></i>
+                            <i id="percWarning" class="bi bi-exclamation-triangle-fill text-warning d-none" title="A soma deve ser preferencialmente 100% para atos de transmissão"></i>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+
+
+    <div class="col-12 text-end mb-5">
+        <hr class="my-4">
+        <button type="submit" class="btn btn-lg btn-success px-5 shadow border-0">
+            <i class="bi bi-check-circle me-2"></i> Finalizar Revisão e Salvar
+        </button>
+    </div>
+</form>
+
+<script>
+function updatePercTotal() {
+    let total = 0;
+    document.querySelectorAll('input[name^="parte_percentual_"]').forEach(input => {
+        total += parseFloat(input.value) || 0;
+    });
+    
+    const span = document.getElementById('percTotal');
+    const status = document.getElementById('percStatus');
+    const warning = document.getElementById('percWarning');
+    const totalCount = document.getElementById('totalPartes');
+    
+    totalCount.innerText = document.querySelectorAll('.party-card').length;
+    span.innerText = total.toFixed(2) + '%';
+    
+    if (Math.abs(total - 100) < 0.01) {
+        span.className = 'h5 mb-0 fw-bold text-success';
+        status.classList.remove('d-none');
+        warning.classList.add('d-none');
+    } else {
+        span.className = 'h5 mb-0 fw-bold text-primary';
+        status.classList.add('d-none');
+        warning.classList.remove('d-none');
+    }
+}
+
+// Attach listeners to percentage inputs
+document.addEventListener('input', (e) => {
+    if (e.target.name && e.target.name.startsWith('parte_percentual_')) {
+        updatePercTotal();
+    }
+});
+
+// Initial call
+window.addEventListener('DOMContentLoaded', updatePercTotal);
+
+function toggleEstrangeiro(select, idx) {
+    const docsDiv = document.getElementById(`docs_estrangeiro_${idx}`);
+    if (select.value === '1') {
+        docsDiv.classList.remove('d-none');
+    } else {
+        docsDiv.classList.add('d-none');
+    }
+}
+
+let nextParteIdx = {{ partes|length }};
+
+function addParteRow() {
+    const container = document.querySelector('#partesContainer');
+    const div = document.createElement('div');
+    div.className = 'party-card bg-white border rounded-3 p-3 mb-3 shadow-sm border-success';
+    div.id = `parte_row_${nextParteIdx}`;
+    div.style.borderLeft = '4px solid #198754 !important';
+    
+    div.innerHTML = `
+        <div class="d-flex justify-content-between align-items-start mb-3 border-bottom pb-2">
+            <div class="d-flex align-items-center gap-3 flex-grow-1">
+                <span class="badge bg-success rounded-pill">Novo</span>
+                <div class="flex-grow-1">
+                    <input type="text" class="form-control form-control-lg fw-bold border-0 bg-transparent p-0" name="parte_nome_${nextParteIdx}" placeholder="Nome Completo">
+                    <input type="text" class="form-control form-control-sm border-0 bg-transparent p-0 text-muted" name="parte_cpf_${nextParteIdx}" placeholder="CPF ou CNPJ">
+                </div>
+            </div>
+            <button type="button" class="btn btn-outline-danger btn-sm border-0" onclick="removePartyCard(${nextParteIdx})">
+                <i class="bi bi-trash"></i>
+            </button>
+        </div>
+        
+        <div class="row g-3">
+            <div class="col-md-4 border-end">
+                <label class="form-label small fw-bold text-muted text-uppercase" title="Identidade nacional e gênero">Cidadania e Gênero <i class="bi bi-question-circle small"></i></label>
+                <div class="row g-2">
+                    <div class="col-12">
+                        <select class="form-select form-select-sm" name="parte_estrangeiro_${nextParteIdx}" onchange="toggleEstrangeiro(this, ${nextParteIdx})">
+                            <option value="0">Brasileiro</option>
+                            <option value="1">Estrangeiro</option>
+                        </select>
+                    </div>
+                    <div class="col-8">
+                        <select class="form-select form-select-sm" name="parte_nacionalidade_${nextParteIdx}">
+                            <option value="76" selected>Brasil</option>
+                            <option value="32">Argentina</option>
+                            <option value="586">Paraguai</option>
+                            <option value="858">Uruguai</option>
+                            <option value="152">Chile</option>
+                            <option value="620">Portugal</option>
+                            <option value="380">Itália</option>
+                            <option value="724">Espanha</option>
+                            <option value="840">EUA</option>
+                            <option value="999">Outros</option>
+                        </select>
+                    </div>
+                    <div class="col-4">
+                        <select class="form-select form-select-sm" name="parte_genero_${nextParteIdx}">
+                            <option value="1">Masc.</option>
+                            <option value="2">Fem.</option>
+                        </select>
+                    </div>
+                </div>
+            </div>
+
+            <div class="col-md-4 border-end d-none" id="docs_estrangeiro_${nextParteIdx}">
+                <label class="form-label small fw-bold text-muted text-uppercase" title="Documentos obrigatórios para estrangeiros">Documentos Estrangeiros <i class="bi bi-passport small"></i></label>
+                <div class="row g-2">
+                    <div class="col-6">
+                        <input type="text" class="form-control form-control-sm" name="parte_rnm_${nextParteIdx}" placeholder="RNM">
+                    </div>
+                    <div class="col-6">
+                        <input type="text" class="form-control form-control-sm" name="parte_passaporte_${nextParteIdx}" placeholder="Passaporte">
+                    </div>
+                    <div class="col-12">
+                        <div class="form-check form-switch small mt-1">
+                            <input class="form-check-input" type="checkbox" name="parte_filhos_${nextParteIdx}" value="1">
+                            <label class="form-check-label">Possui filhos brasileiros</label>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="col-md-4">
+                <label class="form-label small fw-bold text-muted text-uppercase" title="Vínculo matrimonial e patrimonial">Estado Civil e Regime <i class="bi bi-heart small"></i></label>
+                <div class="row g-2">
+                    <div class="col-12">
+                        <select class="form-select form-select-sm" name="parte_estado_civil_${nextParteIdx}">
+                            <option value="1">Solteiro(a)</option>
+                            <option value="2">Casado(a)</option>
+                            <option value="3">União Estável</option>
+                            <option value="4">Divorciado(a)</option>
+                        </select>
+                    </div>
+                    <div class="col-12">
+                        <select class="form-select form-select-sm" name="parte_regime_${nextParteIdx}">
+                            <option value="0">Não se aplica</option>
+                            <option value="1">1 - Comunhão Parcial</option>
+                            <option value="2">2 - Comunhão Universal</option>
+                            <option value="3">3 - Separação Total</option>
+                        </select>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="row g-3 mt-1 pt-3 border-top">
+            <div class="col-md-4">
+                <label class="form-label small fw-bold text-primary text-uppercase" title="Vínculo jurídico com o imóvel">Relação Jurídica <i class="bi bi-link-45deg small"></i></label>
+                <select class="form-select form-select-sm border-primary" name="parte_relacao_${nextParteIdx}">
+                    <option value="1">1 - Proprietário / Titular</option>
+                    <option value="2">2 - Usufrutuário</option>
+                </select>
+            </div>
+            <div class="col-md-4">
+                <label class="form-label small fw-bold text-primary text-uppercase" title="Papel no fluxo deste ato">Condição da Parte <i class="bi bi-arrow-left-right small"></i></label>
+                <select class="form-select form-select-sm border-primary" name="parte_condicao_${nextParteIdx}">
+                    <option value="1">1 - Transmitente</option>
+                    <option value="2" selected>2 - Adquirente</option>
+                </select>
+            </div>
+            <div class="col-md-4">
+                <label class="form-label small fw-bold text-primary text-uppercase" title="Parte ideal ou total">Porcentagem (%) <i class="bi bi-percent small"></i></label>
+                <div class="input-group input-group-sm">
+                    <input type="number" step="0.01" class="form-control border-primary shadow-none fw-bold" name="parte_percentual_${nextParteIdx}" value="100.0">
+                    <span class="input-group-text bg-primary text-white border-primary">%</span>
+                </div>
+            </div>
+        </div>
+    `;
+    container.appendChild(div);
+    nextParteIdx++;
+}
+
+function removePartyCard(idx) {
+    const card = document.getElementById(`parte_row_${idx}`);
+    if (card) card.remove();
+}
+
+function visualizarImovel(imovel_id) {
+    if (!imovel_id) return;
+    const url = '/imovel/' + imovel_id + '/popup';
+    const w = 1200; h = 800;
+    const left = (screen.width - w) / 2; top = (screen.height - h) / 2;
+    window.open(url, 'VisualizarImovel_' + imovel_id, `width=${w},height=${h},top=${top},left=${left},resizable=yes,scrollbars=yes`);
+}
+</script>
+
+<style>
+.card { border-radius: 12px; }
+.party-card { transition: transform 0.2s, box-shadow 0.2s; border-left: 4px solid #dee2e6 !important; }
+.party-card:hover { transform: translateY(-2px); box-shadow: 0 .5rem 1rem rgba(0,0,0,.08)!important; }
+.form-label { margin-bottom: 0.3rem; }
+.form-control-sm, .form-select-sm { font-size: 0.85rem; padding: 0.4rem 0.5rem; }
+.input-group-text { font-size: 0.85rem; }
+</style>
+{% endblock %}
