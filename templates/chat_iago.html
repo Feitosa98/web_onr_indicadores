@@ -3,7 +3,7 @@
 <div class="d-flex flex-column h-100 animate-fade-in" style="min-height: calc(100vh - 120px);">
     <div class="d-flex justify-content-between align-items-center mb-4">
         <div>
-            <h4 class="fw-bold mb-1" style="color: #6C5CE7;">
+            <h4 class="fw-bold mb-1" style="color: #0d6efd;">
                 <i class="bi bi-robot me-2"></i>Busca Inteligente IAGO
             </h4>
             <p class="text-muted mb-0">Seu assistente virtual para consultar matrículas, pessoas e endereços.</p>
@@ -13,7 +13,7 @@
     <div class="card border-0 shadow-sm flex-grow-1 d-flex flex-column" style="border-radius: 1rem; overflow: hidden;">
         <div id="fullChatMessages" class="card-body overflow-auto d-flex flex-column gap-3" style="background-color: #F8F9FA; padding: 2rem;">
             <div class="d-flex w-100">
-                <div class="bg-white p-4 shadow-sm" style="max-width: 75%; border-left: 4px solid #6C5CE7; border-radius: 0 1rem 1rem 1rem;">
+                <div class="bg-white p-4 shadow-sm" style="max-width: 75%; border-left: 4px solid #0d6efd; border-radius: 0 1rem 1rem 1rem;">
                     <strong>IAGO:</strong><br>
                     <span id="typing-greeting-full"></span><span id="cursor-full" style="animation: blink 1s infinite;">|</span>
                     <div id="greeting-options-full" style="display:none; margin-top:15px;">
@@ -32,7 +32,7 @@
         <div class="card-footer bg-white border-top p-4">
             <form id="fullChatForm" class="d-flex gap-3">
                 <input type="text" id="fullChatInput" class="form-control form-control-lg border-light" style="background-color: #f1f3f5; border-radius: 2rem;" placeholder="Digite o que deseja buscar..." required>
-                <button type="submit" class="btn btn-primary d-flex align-items-center justify-content-center shadow-sm px-4" style="border-radius: 2rem; background-color: #6C5CE7; border: none;">
+                <button type="submit" class="btn btn-primary d-flex align-items-center justify-content-center shadow-sm px-4" style="border-radius: 2rem; background-color: #0d6efd; border: none;">
                     <i class="bi bi-send-fill me-2"></i> Enviar
                 </button>
             </form>
@@ -84,7 +84,7 @@ document.addEventListener('DOMContentLoaded', function() {
             // Add User Message
             chatContainer.innerHTML += `
                 <div class="d-flex w-100 justify-content-end animate-fade-in">
-                    <div class="p-4 shadow-sm text-white" style="background-color: #6C5CE7; max-width: 75%; border-radius: 1rem 0 1rem 1rem;">
+                    <div class="p-4 shadow-sm text-white" style="background-color: #0d6efd; max-width: 75%; border-radius: 1rem 0 1rem 1rem;">
                         ${msg}
                     </div>
                 </div>
@@ -124,7 +124,7 @@ document.addEventListener('DOMContentLoaded', function() {
                 
                 chatContainer.innerHTML += `
                     <div class="d-flex w-100 animate-fade-in">
-                        <div class="bg-white p-4 shadow-sm" style="max-width: 75%; border-left: 4px solid #6C5CE7; border-radius: 0 1rem 1rem 1rem;">
+                        <div class="bg-white p-4 shadow-sm" style="max-width: 75%; border-left: 4px solid #0d6efd; border-radius: 0 1rem 1rem 1rem;">
                             <strong>IAGO:</strong><br><br>${formattedReply}
                         </div>
                     </div>
