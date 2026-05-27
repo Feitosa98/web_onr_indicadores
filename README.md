@@ -12,6 +12,15 @@ Este projeto é um sistema web desenvolvido em Python (Flask) para gestão de in
 *   **IAGO (Inteligência Artificial)**: Módulo de aprendizado para extração automática de dados (Atos, Datas, Partes) a partir de documentos OCR.
 *   **Exportação ONR**: Geração de arquivos JSON conforme padrões do ONR.
 
+## 🆕 Novidades (Versão 1.1.0 - Maio 2026)
+
+*   **Busca Inteligente Aprimorada:** O IAGO agora possui "memória" de contexto (lembra do bairro pesquisado anteriormente) e retorna links clicáveis diretamente para as matrículas.
+*   **Novas Telas de Chat:** Adicionada uma tela dedicada e um painel deslizante (Offcanvas) para interagir com o IAGO de qualquer lugar do sistema.
+*   **Velocidade Extrema (Atendimento Rápido):** O IAGO agora responde imediatamente a cumprimentos ("Olá", "Bom dia", "Boa tarde") dependendo do horário do dia, sem atrasos.
+*   **UI/UX de Extração:** Animação global de "Engrenagem" e barra de progresso visível para todos os usuários quando uma extração de IA está ocorrendo no servidor (indicando qual usuário iniciou).
+*   **Otimização de Banco de Dados:** Adicionados Índices Estruturais (`INDEX`) nas tabelas `indicador_pessoal` e `imoveis` reduzindo o tempo de busca por Nomes, CPFs e Logradouros para milissegundos.
+*   **Termos e Privacidade:** Interface remodelada em cards estilo Dashboard.
+
 ## 🛠️ Tecnologias Utilizadas
 
 *   **Backend**: Python 3.12, Flask, SQLite / PostgreSQL.
